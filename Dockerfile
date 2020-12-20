@@ -32,6 +32,8 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.vector.dev | sh -s -- -y
 RUN mkdir /var/lib/vector
 RUN chmod 777 /var/lib/vector
 
+RUN mkdir /var/lib/summation_web_server
+
 WORKDIR /run
 COPY requirements.txt .
 RUN pip install -r requirements.txt
