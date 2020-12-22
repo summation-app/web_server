@@ -339,7 +339,7 @@ db_connections = defaultdict(dict)
 db_classes = defaultdict(lambda: defaultdict(dict))
 db_schemas = defaultdict(dict)	
 if ENVIRONMENT!='TEST':
-	session_factory = sessionmaker(db)
+	session_factory = sessionmaker(db, expire_on_commit=False)
 	Session = scoped_session(session_factory) # thread-local
 	db_connections[0]['summation'] = Session
 
@@ -359,7 +359,7 @@ def connect_to_test_database():
 		Mixins._database_name = 'test_database'
 		automapper = automap_base(cls=Mixins, metadata=meta)
 		automapper.prepare(db, reflect=True) # could also pass schema=database.schema?
-		session_factory = sessionmaker(db)
+		session_factory = sessionmaker(db, expire_on_commit=False)
 		Session = scoped_session(session_factory) # thread-local
 		db_connections[0]['test_database'] = Session
 		logger.debug(automapper.__subclasses__()) # has class variables
@@ -443,7 +443,7 @@ def connect_to_database(database):
 		Mixins_copy = type('Mixins_' + str(database['name']), (Mixins,), {'_organization_id': database['organization_id'], '_database_name': database['name']})
 		automapper = automap_base(cls=Mixins_copy, metadata=meta)
 		automapper.prepare(db, reflect=True) # could also pass schema=database.schema?
-		session_factory = sessionmaker(db)
+		session_factory = sessionmaker(db, expire_on_commit=False)
 		Session = scoped_session(session_factory) # thread-local
 		db_connections[database['organization_id']][database['name']] = Session
 		#logger.debug(dir(automapper.classes.keys()))
@@ -497,11 +497,13 @@ def get_or_create(org_id, database_name, model, **kwargs):
 		session, session_factory = get_database_session(org_id, database_name)
 		instance = session.query(model).filter_by(**kwargs).first()
 		if instance:
+			session.expunge_all() # or expunge(instance)
 			return instance, False
 		else:
 			instance = model(**kwargs)
 			session.add(instance)
 			session.commit()
+			session.expunge_all() # or expunge(instance)
 			return instance, True
 	except:
 		session.rollback()
