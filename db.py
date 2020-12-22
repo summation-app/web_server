@@ -98,7 +98,7 @@ class Mixins(object):
 		return cls.query.first()
 
 	@async_wrap
-	def save(self, as_dict=False):
+	def save(self, as_dict=False, return_id=False):
 		"""
 		"""
 		try:
@@ -107,6 +107,8 @@ class Mixins(object):
 			session.commit()
 			if as_dict:
 				return self.to_dict()
+			elif return_id:
+				return self.id
 			return self
 		except:
 			session.rollback()
