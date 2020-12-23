@@ -825,7 +825,7 @@ async def validate_token(token, organization_id, app_id):
 	TODO: cache this
 	"""
 	try:
-		unverified_claims = jwt.decode(token, verify=False) # decode claims without validating
+		unverified_claims = jwt.decode(token, verify=False, algorithms=["HS256","RS256"]) # decode claims without validating
 		if unverified_claims['iss']=='summation':
 			claims = authlib_jwt.decode(token, open(os.path.join(LOCAL_FILE_STORAGE_PATH, 'public_key.pem'),'rb').read())
 			claims.validate()
