@@ -334,6 +334,8 @@ class Subscriptions(Base, Mixins):
 	__tablename__ = 'subscriptions'
 	id = Column(String, primary_key=True)
 	organization_id = Column(Integer, nullable=True)
+	plan = Column(String, nullable=True)
+	active_flag = Column(Boolean, nullable=True)
 
 db_connections = defaultdict(dict)
 db_classes = defaultdict(lambda: defaultdict(dict))
