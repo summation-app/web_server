@@ -332,7 +332,7 @@ class Customers(Base, Mixins):
 
 class Subscriptions(Base, Mixins):
 	__tablename__ = 'subscriptions'
-	id = Column(String, primary_key=True)
+	id = Column(Integer, primary_key=True)
 	organization_id = Column(Integer, nullable=True)
 	plan = Column(String, nullable=True)
 	active_flag = Column(Boolean, nullable=True)
