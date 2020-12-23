@@ -11,7 +11,7 @@ pycryptodome
 pillow
 firebase-admin
 python-multipart
-pyjwt[crypto]
+PyJWT==1.7.1
 pytest
 pytest-asyncio
 sqlalchemy
