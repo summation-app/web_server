@@ -478,6 +478,10 @@ def get_database_session(organization_id, database_name):
 	"""
 	"""
 	try:
+		if database_name=='summation':
+			if organization_id!=0:
+				organization_id = 0 # force any queries going to the summation app itself to use the default connection
+				logger.debug("forcing organization_id=0 for database_name='summation'")
 		db_session = db_connections.get(organization_id, {}).get(database_name)
 		if db_session:
 			session = db_session()
