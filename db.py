@@ -276,6 +276,8 @@ class Requests(Base, Mixins):
 class Chains(Base, Mixins):
 	__tablename__ = 'chains'
 	id = Column(Integer, primary_key=True)
+	organization_id = Column(Integer, nullable=True)
+	application_id = Column(Integer, nullable=True)
 	value = Column(JSONB, nullable=True)
 	role_id = Column(Integer, nullable=True)
 	enabled = Column(Boolean, nullable=True)
@@ -486,7 +488,7 @@ def get_database_session(organization_id, database_name):
 		if db_session:
 			session = db_session()
 			if schema := db_schemas[organization_id].get(database_name):
-				session.execute(f"SET search_path TO {schema}, public")
+				session.execute(f"SET search_path TO {schema}, public") # ONLY DO this for postgresql?
 			return session, db_session
 		else:
 			logger.error(f"could not get database session for organization_id: {organization_id}, database_name: {database_name}")

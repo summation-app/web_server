@@ -1261,9 +1261,9 @@ async def chain(request):
 			scope = settings.value.get('scope')
 			logger.debug(scope)
 			if scope=='development':
-				record, created = await get_or_create(organization_id, 'summation', Chains, value=queue, role_id=role_id, enabled=True)
+				record, created = await get_or_create(0, 'summation', Chains, organization_id=organization_id, value=queue, role_id=role_id, enabled=True)
 			elif scope=='production':
-				record = await Chains.get(value=queue, role_id=role_id, enabled=True)
+				record = await Chains.get(organization_id=organization_id, value=queue, role_id=role_id, enabled=True)
 				if not record:
 					logger.error(f"chain is not in allow list, blocking")
 					return JSONResponse(None, status_code=500)
