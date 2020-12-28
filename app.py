@@ -564,11 +564,11 @@ async def generate_gateway_tokens(organization_id, force=True, app_id=None):
 			unix_timestamp_plus_20_years = int(unix_timestamp + (20 * 31556952)) # 20 * 31556952 seconds/year
 			payload['exp'] = unix_timestamp_plus_20_years
 			s = authlib_jwt.encode(header, payload, private_key)
-			tokens[scope] = s.decode('ascii')
+			tokens[scope] = s.decode()
 			if force:
 				await Settings(organization_id=organization_id, application_id=app_id, key='gateway_token', value={'scope': scope, 'key': tokens[scope]}).save()
 			else:
-				if results := await query(organization_id, 'summation', "SELECT * FROM settings WHERE organization_id=:organization_id AND application_id=:application_id AND key=:key", {'organization_id': organization_id, 'application_id': app_id, 'key': 'gateway_token'}):# TODO and value->scope==scope
+				if results := await query(0, 'summation', "SELECT * FROM settings WHERE organization_id=:organization_id AND application_id=:application_id AND key=:key", {'organization_id': organization_id, 'application_id': app_id, 'key': 'gateway_token'}):# TODO and value->scope==scope
 					if len(results) < 2:
 						settings, created = await get_or_create(0, 'summation', Settings, organization_id=organization_id, application_id=app_id, key='gateway_token', value={'scope': scope, 'key': tokens[scope]}) # TODO will always create new token
 					else:
@@ -871,6 +871,7 @@ async def validate_gateway_token(token):
 	claims will include: organization_id, app_id
 	"""
 	try:
+		logger.debug(f"validating gateway token: {token}")
 		claims = authlib_jwt.decode(token, open(os.path.join(LOCAL_FILE_STORAGE_PATH, 'public_key.pem'),'rb').read())
 		claims.validate()
 		return claims.get('organization_id'), claims.get('application_id')
@@ -1304,7 +1305,7 @@ async def bind_params(organization_id, database_name, params, scope, jwt_claims,
 					if isinstance(val, str) and val.find('jwt')==0:
 						if scope=='development':
 							# add the val to the database if it doesn't already exist
-							record, created = await get_or_create(organization_id, database_name, Settings, key='jwt_param', string_value=val)
+							record, created = await get_or_create(0, 'summation', Settings, organization_id=organization_id, key='jwt_param', string_value=val)
 							try:
 								jwt_val = eval(val, jwt_claims)
 								if jwt_val:
@@ -1318,7 +1319,7 @@ async def bind_params(organization_id, database_name, params, scope, jwt_claims,
 								logger.error(e, exc_info=True)
 						elif scope=='production':
 							# check if in settings table
-							if record := await Settings.get(key='jwt_param', string_value=val):
+							if record := await Settings.get(organization_id=organization_id, key='jwt_param', string_value=val):
 								try:
 									jwt_val = eval(val, jwt_claims)
 									if jwt_val:
