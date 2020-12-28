@@ -143,9 +143,9 @@ async def shutdown():
 		log_server.stop()
 
 class User():
-	def __init__(self, username, organizations, billing_plan):
+	def __init__(self, username, organization_id, billing_plan):
 		self.username = username
-		self.organizations = organizations
+		self.organization_id = organization_id
 		self.billing_plan = billing_plan
 
 class BasicAuthBackend(AuthenticationBackend):
@@ -164,11 +164,11 @@ class BasicAuthBackend(AuthenticationBackend):
 			row = await Settings.filter(key='api_key', value=token).first()
 			if row:
 				uid = row.customer_id
-				organizations = [row.organization_id]
+				organization_id = row.organization_id
 				billing_plan = None #TODO lookup
 			else:
 				raise AuthenticationError('Invalid API key credentials')
-		return AuthCredentials(["authenticated"]), User(uid, organizations, billing_plan)
+		return AuthCredentials(["authenticated"]), User(uid, organization_id, billing_plan)
 
 middleware = [
 	Middleware(AuthenticationMiddleware, backend=BasicAuthBackend())
@@ -719,8 +719,8 @@ async def api(scope, organization_id, method, url, data, role_id, parameters, jw
 	"""
 	try:
 		if scope=='production':
-			sql = "SELECT t1.*, PGP_SYM_DECRYPT(t2.production_key\:\:bytea, :admin_key) AS production_key, t2.authentication, t2.body, t2.headers, t2.url FROM summation.requests t1 INNER JOIN \"APIs\" t2 ON (t1.api_id=t2.id) WHERE t1.method=:method AND t1.url=:url AND t2.role_id=:role_id"
-			if request_results := await query(organization_id, 'summation', sql, {'admin_key': ADMIN_PASSWORD, 'method': method, 'url': url, 'role_id': role_id}):
+			sql = "SELECT t1.*, PGP_SYM_DECRYPT(t2.production_key\:\:bytea, :admin_key) AS production_key, t2.authentication, t2.body, t2.headers, t2.url FROM summation.requests t1 INNER JOIN \"APIs\" t2 ON (t1.api_id=t2.id) WHERE t2.organization_id=:organization_id AND t1.method=:method AND t1.url=:url AND t2.role_id=:role_id"
+			if request_results := await query(0, 'summation', sql, {'organization_id': organization_id, 'admin_key': ADMIN_PASSWORD, 'method': method, 'url': url, 'role_id': role_id}):
 				request = request_results[0]
 				auth = None
 				request_url, headers, parameters, auth = prepare_authentication(request['authentication'], scope, request['production_key'], None, request['url'], headers, data, parameters)
@@ -745,7 +745,7 @@ async def api(scope, organization_id, method, url, data, role_id, parameters, jw
 				logger.debug(f'organization_id: {organization_id}')
 				# check if matches the URL prefix of any added API
 				sql = "SELECT id, PGP_SYM_DECRYPT(production_key\:\:bytea, :admin_key) AS production_key, PGP_SYM_DECRYPT(development_key\:\:bytea, :admin_key) AS development_key, authentication, body, headers, url FROM \"APIs\" WHERE url LIKE :url AND organization_id=:organization_id"
-				if api_match := await query(organization_id, 'summation', sql, {'admin_key': ADMIN_PASSWORD, 'url': url_prefix, 'organization_id': organization_id}):
+				if api_match := await query(0, 'summation', sql, {'admin_key': ADMIN_PASSWORD, 'url': url_prefix, 'organization_id': organization_id}):
 					api = api_match[0]
 					# add full URL to requests table, link to apis.id
 					record, created = await get_or_create(0, 'summation', Requests, role_id=role_id, method=method, url=url, api_id=api['id'])

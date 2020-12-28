@@ -488,7 +488,7 @@ def get_database_session(organization_id, database_name):
 		if db_session:
 			session = db_session()
 			if schema := db_schemas[organization_id].get(database_name):
-				session.execute(f"SET search_path TO {schema}, public") # ONLY DO this for postgresql?
+				session.execute(f"SET search_path TO {schema}, public") # only happens for databases with schemas, like PostgreSQL
 			return session, db_session
 		else:
 			logger.error(f"could not get database session for organization_id: {organization_id}, database_name: {database_name}")
