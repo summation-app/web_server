@@ -529,6 +529,8 @@ async def create_default_roles_apps():
 		roles = ['admins', 'users']
 		for role in roles:
 			role_row, created = await get_or_create(0, 'summation', Roles, organization_id=0, application_id=app.id, name=role, enabled=True)
+		# create org_id 0 if not exists
+		org_id, created = await get_or_create(0, 'summation', Organizations, id=0, name='default', date_created=datetime.utcnow())
 	except Exception as e:
 		logger.error(e, exc_info=True)
 
