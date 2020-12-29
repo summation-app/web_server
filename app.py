@@ -53,27 +53,13 @@ VECTOR_BIN_PATH = os.getenv('VECTOR_BIN_PATH')
 url_regex = re.compile('(https?\:\/\/[a-zA-Z0-9\.-]*)\/?')
 chain_regex = re.compile('^_\d')
 
-class CustomFormatter(logging.Formatter):
-	"""
-	sets optional arguments (organization_id) to -1 if not passed in
-	"""
-	def format(self, record: logging.LogRecord) -> str:
-		arg_pattern = re.compile(r'%\[(\w+)\]')
-		arg_names = [x.group(1) for x in arg_pattern.finditer(self._fmt)]
-		for field in arg_names:
-			if field not in record.__dict__:
-				record.__dict__[field] = -1
-
-		return super().format(record)
-
 logging.basicConfig(level=logging.DEBUG,
-format=CustomFormatter('[%(asctime)s] [%(levelname)s] [%(module)s:%(funcName)s] [%(organization_id)d] %(message)s'),
+format='[%(asctime)s] [%(levelname)s] [%(module)s:%(funcName)s] [%(organization_id)d] %(message)s',
 handlers=[logging.FileHandler(LOCAL_FILE_LOG_PATH, mode='w'),
 			logging.StreamHandler(sys.stdout)])
 logging.getLogger('websockets.server').setLevel(logging.WARNING) # to allow log tailing to browser without infinite loop
 logging.getLogger('websockets.protocol').setLevel(logging.WARNING) # to allow log tailing to browser without infinite loop
-logger = logging
-
+logger = logging.LoggerAdapter(logging, {'organization_id': 0})
 class LogServer(object):
 	"""
 	Manage the Vector log router
@@ -208,8 +194,7 @@ def request_validator_timer(func):
 		organization_id, app_id = await validate_gateway_token(gateway_token)
 		kwargs['organization_id'] = organization_id
 		kwargs['app_id'] = app_id
-		#extra = {'organization_id': organization_id}
-		#logger = logging.LoggerAdapter(logger, extra)
+		kwargs['logger'] = logging.LoggerAdapter(logging, {'organization_id': organization_id})
 		value = await func(*args, **kwargs)
 		end_time = time.perf_counter()
 		duration = end_time - start_time
@@ -700,7 +685,7 @@ async def add_database(request):
 
 @app.route('/api', methods=['GET','POST'])
 @request_validator_timer
-async def api_gateway(request, organization_id, app_id):
+async def api_gateway(request, organization_id, app_id, logger):
 	"""
 	validate JWT
 	get key from header, and check if development or production
@@ -1116,7 +1101,7 @@ async def proxy_request(method, url, headers, auth, parameters, data):
 
 @app.route('/database', methods=['GET','POST'])
 @request_validator_timer
-async def database_gateway(request, organization_id, app_id):
+async def database_gateway(request, organization_id, app_id, logger):
 	"""
 	validate JWT
 	get key from header, and check if development or production
