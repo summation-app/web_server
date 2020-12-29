@@ -36,6 +36,8 @@ from starlette.requests import Request
 from starlette.middleware.authentication import AuthenticationMiddleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.authentication import requires
+from starlette_context import context, plugins
+from starlette_context.middleware import RawContextMiddleware
 
 from aiohttp import ClientSession
 from aiohttp.helpers import BasicAuth
@@ -59,7 +61,7 @@ handlers=[logging.FileHandler(LOCAL_FILE_LOG_PATH, mode='w'),
 			logging.StreamHandler(sys.stdout)])
 logging.getLogger('websockets.server').setLevel(logging.WARNING) # to allow log tailing to browser without infinite loop
 logging.getLogger('websockets.protocol').setLevel(logging.WARNING) # to allow log tailing to browser without infinite loop
-logger = logging.LoggerAdapter(logging, {'organization_id': 0})
+logger = logging.LoggerAdapter(logging.getLogger(__name__), {'organization_id': 0})
 class LogServer(object):
 	"""
 	Manage the Vector log router
@@ -170,7 +172,14 @@ class BasicAuthBackend(AuthenticationBackend):
 		return AuthCredentials(["authenticated"]), User(uid, organization_id, billing_plan)
 
 middleware = [
-	Middleware(AuthenticationMiddleware, backend=BasicAuthBackend())
+	Middleware(AuthenticationMiddleware, backend=BasicAuthBackend()),
+	Middleware(
+        RawContextMiddleware,
+        plugins=(
+            plugins.RequestIdPlugin(),
+            plugins.CorrelationIdPlugin()
+        )
+    )
 ]
 
 app = Starlette(debug=True, middleware=middleware, on_startup=[startup], on_shutdown=[shutdown])
@@ -194,7 +203,7 @@ def request_validator_timer(func):
 		organization_id, app_id = await validate_gateway_token(gateway_token)
 		kwargs['organization_id'] = organization_id
 		kwargs['app_id'] = app_id
-		kwargs['logger'] = logging.LoggerAdapter(logging, {'organization_id': organization_id})
+		kwargs['logger'] = logging.LoggerAdapter(logging.getLogger(__name__), {'organization_id': organization_id})
 		value = await func(*args, **kwargs)
 		end_time = time.perf_counter()
 		duration = end_time - start_time
@@ -530,7 +539,7 @@ async def create_default_roles_apps():
 		for role in roles:
 			role_row, created = await get_or_create(0, 'summation', Roles, organization_id=0, application_id=app.id, name=role, enabled=True)
 		# create org_id 0 if not exists
-		org_id, created = await get_or_create(0, 'summation', Organizations, id=0, name='default')
+		org_id, created = await get_or_create(0, 'summation', Organizations, id=0, name='summation')
 		if created:
 			org_id.date_created=datetime.utcnow()
 			await org_id.save()

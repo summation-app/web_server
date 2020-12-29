@@ -5,6 +5,8 @@ gunicorn
 aiohttp
 Authlib
 httptools
+python-json-logger
+starlette-context
 six
 jwcrypto
 pycryptodome
