@@ -57,14 +57,14 @@ class CustomFormatter(logging.Formatter):
 	"""
 	sets optional arguments (organization_id) to -1 if not passed in
 	"""
-    def format(self, record: logging.LogRecord) -> str:
-        arg_pattern = re.compile(r'%\[(\w+)\]')
-        arg_names = [x.group(1) for x in arg_pattern.finditer(self._fmt)]
-        for field in arg_names:
-            if field not in record.__dict__:
-                record.__dict__[field] = -1
+	def format(self, record: logging.LogRecord) -> str:
+		arg_pattern = re.compile(r'%\[(\w+)\]')
+		arg_names = [x.group(1) for x in arg_pattern.finditer(self._fmt)]
+		for field in arg_names:
+			if field not in record.__dict__:
+				record.__dict__[field] = -1
 
-        return super().format(record)
+		return super().format(record)
 
 logging.basicConfig(level=logging.DEBUG,
 format=CustomFormatter('[%(asctime)s] [%(levelname)s] [%(module)s:%(funcName)s] [%(organization_id)d] %(message)s'),
