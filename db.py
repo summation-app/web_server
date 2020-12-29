@@ -19,7 +19,9 @@ from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy import text
 from sqlalchemy.ext.declarative import declarative_base
 
-logger = logging.LoggerAdapter(logging.getLogger(__name__), {'organization_id': 0})
+from json_logging import *
+
+logger = JSONLoggingAdapter(logging.getLogger(__name__))
 
 ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD')
 ENVIRONMENT = os.getenv('ENVIRONMENT')

@@ -28,6 +28,7 @@ from starlette.middleware import Middleware
 from starlette.websockets import WebSocket
 from starlette.endpoints import WebSocketEndpoint
 from starlette.types import Message, Receive, Scope, Send
+from starlette.requests import Request
 from starlette.authentication import (
 	AuthenticationBackend, AuthenticationError, SimpleUser, UnauthenticatedUser,
 	AuthCredentials
@@ -38,9 +39,9 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.authentication import requires
 from starlette_context import context, plugins
 from starlette_context.middleware import RawContextMiddleware
-
 from aiohttp import ClientSession
 from aiohttp.helpers import BasicAuth
+from pythonjsonlogger import jsonlogger
 
 from db import *
 from jwt_verifier import *
@@ -55,13 +56,18 @@ VECTOR_BIN_PATH = os.getenv('VECTOR_BIN_PATH')
 url_regex = re.compile('(https?\:\/\/[a-zA-Z0-9\.-]*)\/?')
 chain_regex = re.compile('^_\d')
 
+json_formatter = jsonlogger.JsonFormatter('%(asctime)s %(levelname)s %(filename)s %(funcName)s %(lineno)d %(message)s')
+handlers = [logging.FileHandler(LOCAL_FILE_LOG_PATH, mode='w'),
+			logging.StreamHandler(sys.stdout)]
+for handler in handlers:
+	handler.setFormatter(json_formatter)
 logging.basicConfig(level=logging.DEBUG,
-format='[%(asctime)s] [%(levelname)s] [%(module)s:%(funcName)s] [%(organization_id)d] %(message)s',
-handlers=[logging.FileHandler(LOCAL_FILE_LOG_PATH, mode='w'),
-			logging.StreamHandler(sys.stdout)])
+	handlers=handlers)
 logging.getLogger('websockets.server').setLevel(logging.WARNING) # to allow log tailing to browser without infinite loop
 logging.getLogger('websockets.protocol').setLevel(logging.WARNING) # to allow log tailing to browser without infinite loop
-logger = logging.LoggerAdapter(logging.getLogger(__name__), {'organization_id': 0})
+
+logger = JSONLoggingAdapter(logging.getLogger(__name__))
+
 class LogServer(object):
 	"""
 	Manage the Vector log router
@@ -174,12 +180,13 @@ class BasicAuthBackend(AuthenticationBackend):
 middleware = [
 	Middleware(AuthenticationMiddleware, backend=BasicAuthBackend()),
 	Middleware(
-        RawContextMiddleware,
-        plugins=(
-            plugins.RequestIdPlugin(),
-            plugins.CorrelationIdPlugin()
-        )
-    )
+		RawContextMiddleware,
+		plugins=(
+			plugins.RequestIdPlugin(),
+			plugins.CorrelationIdPlugin(),
+			plugins.ForwardedForPlugin(),
+		)
+	)
 ]
 
 app = Starlette(debug=True, middleware=middleware, on_startup=[startup], on_shutdown=[shutdown])
@@ -1407,6 +1414,6 @@ async def analytics(request):
 		logger.error(e, exc_info=True)
 
 @app.route('/ping', methods=['GET'])
-async def ping(request):
+async def ping(request: Request):
 	logger.debug('from ping')
 	return PlainTextResponse("hello")
