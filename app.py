@@ -47,7 +47,7 @@ from jwt_verifier import *
 from aiohttp import ClientSession, BasicAuth
 
 ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD')
-ENVIRONMENT = os.getenv('ENVIRONMENT') # 'self_hosted' or 'cloud'
+ENVIRONMENT = os.getenv('ENVIRONMENT', 'self_hosted') # 'self_hosted', 'cloud', 'test'
 LOCAL_FILE_STORAGE_PATH = os.getenv('LOCAL_FILE_STORAGE_PATH')
 url_regex = re.compile('(https?\:\/\/[a-zA-Z0-9\.-]*)\/?')
 chain_regex = re.compile('^_\d')
@@ -63,13 +63,14 @@ async def startup():
 		generate_public_key_pair()
 		await create_default_roles_apps()
 		await setup_pgcrypto()
-		log_server = LogServer(await Settings.get(organization_id=0, key='logging_env_vars'))
+		if ENVIRONMENT=='self_hosted':
+			log_server = LogServer(await Settings.get(organization_id=0, key='logging_env_vars'))
 	else:
 		logger.debug('skipping startup')
 
 async def shutdown():
 	await session.close()
-	if ENVIRONMENT!='TEST':
+	if ENVIRONMENT=='self_hosted':
 		global log_server
 		log_server.stop()
 
@@ -429,7 +430,9 @@ async def generate_vector_config(request):
 		settings.value = destination
 		await settings.save()
 
-		result = log_server.restart()
+		result = True
+		if ENVIRONMENT=='self_hosted':
+			result = log_server.restart()
 
 		return JSONResponse(result)
 	except Exception as e:
