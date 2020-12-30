@@ -67,7 +67,7 @@ else:
 		def _worker_enqueue(self, record, info, resource=None, labels=None, trace=None, span_id=None):
 			queue_entry = {
 				"info": info,
-				"severity": google.cloud.logging._helpers._normalize_severity(record.levelno),
+				"severity": record.levelno,
 				"resource": resource,
 				"labels": labels,
 				"trace": trace,
