@@ -36,8 +36,7 @@ if ENVIRONMENT=='cloud':
 	client = google.cloud.logging.Client()
 	handler = client.get_default_handler() #CloudLoggingHandler(client)
 	handler.setFormatter(json_formatter)
-	client.setup_logging(handler, excluded_loggers=('google.cloud', 'google.auth', 'google_auth_httplib2','urllib3.connectionpool'))
-	#google.cloud.logging.handlers.setup_logging(handler, excluded_loggers=('google.cloud', 'google.auth', 'google_auth_httplib2','urllib3.connectionpool'))
+	google.cloud.logging.handlers.setup_logging(handler, excluded_loggers=('google.cloud', 'google.auth', 'google_auth_httplib2','urllib3.connectionpool'))
 for handler in handlers:
 	handler.setFormatter(json_formatter)
 logging.basicConfig(level=logging.DEBUG,
