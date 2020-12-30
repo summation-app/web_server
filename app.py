@@ -137,7 +137,7 @@ def request_validator_timer(func):
 		if isinstance(value, JSONResponse):
 			status_code = value.status_code
 		context['duration'] = round(time.perf_counter() - context['start_time'], 3)
-		context['funcName'] = func.__name__
+		context['function_name'] = func.__name__
 		logger.debug('request completed')
 		# create_task to store metrics in database
 		asyncio.create_task(save_metrics(date=date, duration=context.get('duration'), organization_id=organization_id, app_id=app_id, event_type=func.__name__, status_code=status_code)) # don't wait for it to finish
