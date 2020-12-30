@@ -37,15 +37,14 @@ if ENVIRONMENT!='cloud':
 		handlers=handlers)
 	logging.getLogger('websockets.server').setLevel(logging.WARNING) # to allow log tailing to browser without infinite loop
 	logging.getLogger('websockets.protocol').setLevel(logging.WARNING) # to allow log tailing to browser without infinite loop
+	logger = JSONLoggingAdapter(logging.getLogger(__name__))
 else:
 	import google.cloud.logging
 	from google.cloud.logging.handlers import CloudLoggingHandler, setup_logging
 	client = google.cloud.logging.Client()
 	handler = CloudLoggingHandler(client)
 	setup_logging(handler, excluded_loggers=('google.cloud', 'google.auth', 'google_auth_httplib2','urllib3.connectionpool'))
-
-logger = JSONLoggingAdapter(logging.getLogger(__name__))
-
+	logger = logging.getLogger(__name__)
 class LogServer(object):
 	"""
 	Manage the Vector log router
