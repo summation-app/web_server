@@ -2,7 +2,6 @@ import os
 import logging
 import typing
 from datetime import datetime, timezone, timedelta
-import dateutil.parser
 import functools
 import json
 import uuid
@@ -41,7 +40,6 @@ from starlette_context import context, plugins
 from starlette_context.middleware import RawContextMiddleware
 from aiohttp import ClientSession
 from aiohttp.helpers import BasicAuth
-from pythonjsonlogger import jsonlogger
 
 from db import *
 from jwt_verifier import *
@@ -51,84 +49,10 @@ from aiohttp import ClientSession, BasicAuth
 ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD')
 ENVIRONMENT = os.getenv('ENVIRONMENT') # 'self_hosted' or 'cloud'
 LOCAL_FILE_STORAGE_PATH = os.getenv('LOCAL_FILE_STORAGE_PATH')
-LOCAL_FILE_LOG_PATH = os.getenv('LOCAL_FILE_LOG_PATH')
-VECTOR_BIN_PATH = os.getenv('VECTOR_BIN_PATH')
 url_regex = re.compile('(https?\:\/\/[a-zA-Z0-9\.-]*)\/?')
 chain_regex = re.compile('^_\d')
 
-json_formatter = jsonlogger.JsonFormatter('%(asctime)s %(levelname)s %(filename)s %(funcName)s %(lineno)d %(message)s')
-handlers = [logging.FileHandler(LOCAL_FILE_LOG_PATH, mode='w'),
-			logging.StreamHandler(sys.stdout)]
-for handler in handlers:
-	handler.setFormatter(json_formatter)
-logging.basicConfig(level=logging.DEBUG,
-	handlers=handlers)
-logging.getLogger('websockets.server').setLevel(logging.WARNING) # to allow log tailing to browser without infinite loop
-logging.getLogger('websockets.protocol').setLevel(logging.WARNING) # to allow log tailing to browser without infinite loop
-
 logger = JSONLoggingAdapter(logging.getLogger(__name__))
-
-class LogServer(object):
-	"""
-	Manage the Vector log router
-	https://vector.dev
-	"""
-
-	def __init__(self):
-		self.vector_process = None
-		self.task = asyncio.create_task(self.start()) # don't wait for it to finish
-		logger.debug('done with LogServer init')
-
-	async def read_stream(self, stream):
-		"""
-		https://kevinmccarthy.org/2016/07/25/streaming-subprocess-stdin-and-stdout-with-asyncio-in-python/
-		"""
-		while True:
-			line = await stream.readline()
-			if line:
-				print(line)
-			else:
-				break
-
-	async def start(self):
-		try:
-			env_vars = {}
-			# read environment variables from the database settings
-			if settings := await Settings.get(organization_id=0, key='logging_env_vars'):
-				env_vars = settings.value
-
-			vector_path = os.path.join(LOCAL_FILE_STORAGE_PATH, 'vector_config.json')
-			vector_config_path = Path(vector_path)
-			if vector_config_path.is_file():
-				self.vector_process = await asyncio.create_subprocess_exec(VECTOR_BIN_PATH, '--config', vector_path,
-				stdout=asyncio.subprocess.PIPE,
-				env=env_vars)
-
-				await self.read_stream(self.vector_process.stdout)
-				await self.vector_process.wait()
-				self.vector_process = None # if you press Ctrl-C, vector will kill itself
-				#stdout, stderr = await self.vector_process.communicate()
-			else:
-				logger.debug('vector config file not found - skipping starting of log server')
-		except Exception as e:
-			logger.error(e, exc_info=True)
-
-	def stop(self):
-		try:
-			if self.vector_process:
-				self.vector_process.kill()
-			else:
-				logger.error('no vector process initialized')
-		except Exception as e:
-			logger.error(e, exc_info=True)
-
-	def restart(self):
-		try:
-			self.stop()
-			self.task = asyncio.create_task(self.start()) # don't wait for it to finish
-			return True
-		except Exception as e:
-			logger.error(e, exc_info=True)
 
 async def startup():
 	global session
@@ -139,7 +63,7 @@ async def startup():
 		generate_public_key_pair()
 		await create_default_roles_apps()
 		await setup_pgcrypto()
-		log_server = LogServer()
+		log_server = LogServer(await Settings.get(organization_id=0, key='logging_env_vars'))
 	else:
 		logger.debug('skipping startup')
 
@@ -186,40 +110,36 @@ middleware = [
 			plugins.CorrelationIdPlugin(),
 			plugins.ForwardedForPlugin(),
 		)
-	)
+	),
+	Middleware(CORSMiddleware, allow_origins=['*'],allow_credentials=True,allow_methods=["*"],allow_headers=["*"])
 ]
 
 app = Starlette(debug=True, middleware=middleware, on_startup=[startup], on_shutdown=[shutdown])
-
-origins = ["*"]
-app.add_middleware(
-	CORSMiddleware,
-	allow_origins=origins,
-	allow_credentials=True,
-	allow_methods=["*"],
-	allow_headers=["*"],
-)
 
 def request_validator_timer(func):
 	@functools.wraps(func)
 	async def wrapper_timer(*args, **kwargs):
 		start_time = time.perf_counter()
 		date = datetime.utcnow()
-		inputs = await args[0].json()
-		gateway_token = inputs.get('gateway_token')
-		organization_id, app_id = await validate_gateway_token(gateway_token)
-		kwargs['organization_id'] = organization_id
-		kwargs['app_id'] = app_id
-		kwargs['logger'] = logging.LoggerAdapter(logging.getLogger(__name__), {'organization_id': organization_id})
+		request = args[0]
+		organization_id, app_id = None, None
+		context['start_time'] = start_time # duration will be added to context at the end of the function call itself, so it can also be logged
+		if request.method=='POST':
+			inputs = await request.json()
+			gateway_token = inputs.get('gateway_token')
+			organization_id, app_id = await validate_gateway_token(gateway_token)
+			kwargs['organization_id'] = organization_id
+			kwargs['app_id'] = app_id
+			context['organization_id'] = organization_id
 		value = await func(*args, **kwargs)
-		end_time = time.perf_counter()
-		duration = end_time - start_time
-		# logger.debug(f"Elapsed time: {duration:0.4f} seconds")
-		# create_task to store metrics in database
 		status_code = None
 		if isinstance(value, JSONResponse):
 			status_code = value.status_code
-		asyncio.create_task(save_metrics(date=date, duration=round(duration, 3), organization_id=organization_id, app_id=app_id, event_type=func.__name__, status_code=status_code)) # don't wait for it to finish
+		context['duration'] = round(time.perf_counter() - context['start_time'], 3)
+		context['funcName'] = func.__name__
+		logger.debug('request completed')
+		# create_task to store metrics in database
+		asyncio.create_task(save_metrics(date=date, duration=context.get('duration'), organization_id=organization_id, app_id=app_id, event_type=func.__name__, status_code=status_code)) # don't wait for it to finish
 		return value
 	return wrapper_timer
 
@@ -701,7 +621,7 @@ async def add_database(request):
 
 @app.route('/api', methods=['GET','POST'])
 @request_validator_timer
-async def api_gateway(request, organization_id, app_id, logger):
+async def api_gateway(request, organization_id, app_id):
 	"""
 	validate JWT
 	get key from header, and check if development or production
@@ -1117,7 +1037,7 @@ async def proxy_request(method, url, headers, auth, parameters, data):
 
 @app.route('/database', methods=['GET','POST'])
 @request_validator_timer
-async def database_gateway(request, organization_id, app_id, logger):
+async def database_gateway(request, organization_id, app_id):
 	"""
 	validate JWT
 	get key from header, and check if development or production
@@ -1414,6 +1334,8 @@ async def analytics(request):
 		logger.error(e, exc_info=True)
 
 @app.route('/ping', methods=['GET'])
+@request_validator_timer
 async def ping(request: Request):
+	context['duration'] = round(time.perf_counter() - context['start_time'], 3)
 	logger.debug('from ping')
 	return PlainTextResponse("hello")

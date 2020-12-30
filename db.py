@@ -19,7 +19,7 @@ from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy import text
 from sqlalchemy.ext.declarative import declarative_base
 
-from json_logging import *
+from logs import *
 
 logger = JSONLoggingAdapter(logging.getLogger(__name__))
 
