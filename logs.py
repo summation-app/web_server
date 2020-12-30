@@ -51,6 +51,19 @@ else:
 		https://github.com/snickell/google_structlog/blob/master/google_structlog/setup_google.py
 		"""
 
+		def sanitize_dict(self, dictionary, ignore_keys=[]):
+			sanitized = {}
+			for key, val in dictionary.items():
+				try:
+					if key not in ignore_keys:
+						json.dumps(val)  # serialization/type error check
+						if isinstance(val, tuple):
+							val = list(val)
+						sanitized[key] = val
+				except TypeError:
+					sanitized[key] = str(val)
+			return sanitized
+
 		def send(self, record, message, **kwargs):
 			info = {
 				"message": message,
@@ -59,18 +72,10 @@ else:
 				"line_number": record.lineno,
 			}
 			if record.args:
-				info["args"] = record.args
+				info["args"] = self.sanitize_dict(record.args)
 			try:
-				for key, val in context.data.items():
-					try:
-						if key not in ['start_time']:
-							json.dumps(val)  # serialization/type error check
-							if isinstance(val, tuple):
-								val = list(val)
-							info[key] = val
-					except TypeError:
-						info[key] = str(val)
-			except Exception as e:
+				info.update(self.sanitize_dict(context.data))
+			except Exception as e: # no context available
 				pass
 			self._worker_enqueue(record, info, **kwargs)
 
