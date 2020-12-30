@@ -41,9 +41,30 @@ if ENVIRONMENT!='cloud':
 else:
 	import google.cloud.logging
 	from google.cloud.logging.handlers import CloudLoggingHandler, setup_logging
+	from google.cloud.logging.handlers.transports.background_thread import BackgroundThreadTransport, _Worker
+
+	def _json_enqueue(self, record, message, resource=None, labels=None, trace=None, span_id=None):
+		"""
+		adapted from https://github.com/snickell/google_structlog/blob/master/google_structlog/setup_google.py
+		"""
+		entry = {"info": {"message": message, "python_logger": "worker"},"severity": record.levelname,"resource": resource,"labels": labels,"trace": trace,"span_id": span_id,"timestamp": datetime.utcfromtimestamp(record.created)}
+		entry["info"]["filePath"] = record.filename
+		entry["info"]["lineNumber"] = record.lineno
+		entry["info"]["functionName"] = record.funcName
+		if record.args:
+			entry["info"]["args"] = record.args
+		try:
+			entry["info"].update(context.data) # add starlette context data to the log
+		except Exception as e:
+			pass
+		self._queue.put_nowait(entry)
+		
+	# monkeypatch enqueue function
+	_Worker.enqueue = _json_enqueue
+
 	client = google.cloud.logging.Client()
-	handler = CloudLoggingHandler(client)
-	setup_logging(handler, excluded_loggers=('google.cloud', 'google.auth', 'google_auth_httplib2','urllib3.connectionpool'))
+	handler = CloudLoggingHandler(client, transport=BackgroundThreadTransport)
+	setup_logging(handler, log_level=logging.DEBUG, excluded_loggers=('google.cloud', 'google.auth', 'google_auth_httplib2','urllib3.connectionpool'))
 	logger = logging.getLogger(__name__)
 class LogServer(object):
 	"""
