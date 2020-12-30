@@ -27,22 +27,22 @@ class JSONLoggingAdapter(logging.LoggerAdapter):
 		kwargs["extra"] = extra
 		return msg, kwargs
 
-json_formatter = jsonlogger.JsonFormatter('%(asctime)s %(levelname)s %(filename)s %(funcName)s %(lineno)d %(message)s')
-handlers = [logging.FileHandler(LOCAL_FILE_LOG_PATH, mode='w'),
-			logging.StreamHandler(sys.stdout)]
-if ENVIRONMENT=='cloud':
+if ENVIRONMENT!='cloud':
+	json_formatter = jsonlogger.JsonFormatter('%(asctime)s %(levelname)s %(filename)s %(funcName)s %(lineno)d %(message)s')
+	handlers = [logging.FileHandler(LOCAL_FILE_LOG_PATH, mode='w'),
+				logging.StreamHandler(sys.stdout)]
+	for handler in handlers:
+		handler.setFormatter(json_formatter)
+	logging.basicConfig(level=logging.DEBUG,
+		handlers=handlers)
+	logging.getLogger('websockets.server').setLevel(logging.WARNING) # to allow log tailing to browser without infinite loop
+	logging.getLogger('websockets.protocol').setLevel(logging.WARNING) # to allow log tailing to browser without infinite loop
+else:
 	import google.cloud.logging
 	from google.cloud.logging.handlers import CloudLoggingHandler, setup_logging
 	client = google.cloud.logging.Client()
 	handler = CloudLoggingHandler(client)
-	handler.setFormatter(json_formatter)
 	setup_logging(handler, excluded_loggers=('google.cloud', 'google.auth', 'google_auth_httplib2','urllib3.connectionpool'))
-for handler in handlers:
-	handler.setFormatter(json_formatter)
-logging.basicConfig(level=logging.DEBUG,
-	handlers=handlers)
-logging.getLogger('websockets.server').setLevel(logging.WARNING) # to allow log tailing to browser without infinite loop
-logging.getLogger('websockets.protocol').setLevel(logging.WARNING) # to allow log tailing to browser without infinite loop
 
 logger = JSONLoggingAdapter(logging.getLogger(__name__))
 
