@@ -58,10 +58,10 @@ else:
 				"function_name": record.funcName,
 				"line_number": record.lineno,
 			}
-			if record.args:
-				info["args"] = record.args
+			#if record.args:
+			#	info["args"] = record.args
 			try:
-				for key, val in context.data:
+				for key, val in context.data.items():
 					try:
 						json.dumps(val)  # serialization/type error check
 						if isinstance(val, tuple):
