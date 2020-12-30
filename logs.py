@@ -54,7 +54,8 @@ else:
 		def send(self, record, message, **kwargs):
 			info = {
 				"message": message,
-				"file_path": record.filename,
+				"file_name": record.filename,
+				"function_name": record.funcName,
 				"line_number": record.lineno,
 			}
 			if record.args:
