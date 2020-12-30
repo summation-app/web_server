@@ -72,7 +72,10 @@ else:
 				"line_number": record.lineno,
 			}
 			if record.args:
-				info["args"] = self.sanitize_dict(record.args)
+				if isinstance(record.args, dict):
+					info["args"] = self.sanitize_dict(record.args)
+				else:
+					info["args"] = str(record.args)
 			try:
 				info.update(self.sanitize_dict(context.data))
 			except Exception as e: # no context available
