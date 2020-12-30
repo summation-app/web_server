@@ -3,7 +3,7 @@ import os
 import sys
 import asyncio
 import json
-import datetime
+from datetime import datetime
 from pathlib import Path
 
 from starlette_context import context
@@ -80,7 +80,7 @@ else:
 				"labels": labels,
 				"trace": trace,
 				"span_id": span_id,
-				"timestamp": datetime.datetime.utcfromtimestamp(record.created),
+				"timestamp": datetime.utcfromtimestamp(record.created),
 			}
 			self.worker._queue.put_nowait(queue_entry)
 
