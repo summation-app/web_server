@@ -58,15 +58,16 @@ else:
 				"function_name": record.funcName,
 				"line_number": record.lineno,
 			}
-			#if record.args:
-			#	info["args"] = record.args
+			if record.args:
+				info["args"] = record.args
 			try:
 				for key, val in context.data.items():
 					try:
-						json.dumps(val)  # serialization/type error check
-						if isinstance(val, tuple):
-							val = list(val)
-						info[key] = val
+						if key not in ['start_time']:
+							json.dumps(val)  # serialization/type error check
+							if isinstance(val, tuple):
+								val = list(val)
+							info[key] = val
 					except TypeError:
 						info[key] = str(val)
 			except Exception as e:
