@@ -63,6 +63,8 @@ else:
 				for key, val in context.data:
 					try:
 						json.dumps(val)  # serialization/type error check
+						if isinstance(val, tuple):
+							val = list(val)
 						info[key] = val
 					except TypeError:
 						info[key] = str(val)
