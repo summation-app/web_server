@@ -2,6 +2,7 @@ import logging
 import os
 import sys
 import asyncio
+import json
 import datetime
 from pathlib import Path
 
@@ -59,7 +60,12 @@ else:
 			if record.args:
 				info["args"] = record.args
 			try:
-				info.update(context.data) # add starlette context data to the log
+				for key, val in context.data:
+					try:
+						json.dumps(val)  # serialization/type error check
+						info[key] = val
+					except TypeError:
+						info[key] = str(val)
 			except Exception as e:
 				pass
 			self._worker_enqueue(record, info, **kwargs)
@@ -67,7 +73,7 @@ else:
 		def _worker_enqueue(self, record, info, resource=None, labels=None, trace=None, span_id=None):
 			queue_entry = {
 				"info": info,
-				"severity": record.levelno,
+				"severity": record.levelname,
 				"resource": resource,
 				"labels": labels,
 				"trace": trace,
