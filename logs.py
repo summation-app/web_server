@@ -7,6 +7,7 @@ from pathlib import Path
 from starlette_context import context
 from pythonjsonlogger import jsonlogger
 
+ENVIRONMENT = os.getenv('ENVIRONMENT', 'self_hosted') # 'self_hosted', 'cloud', 'test'
 LOCAL_FILE_LOG_PATH = os.getenv('LOCAL_FILE_LOG_PATH')
 VECTOR_BIN_PATH = os.getenv('VECTOR_BIN_PATH')
 LOCAL_FILE_STORAGE_PATH = os.getenv('LOCAL_FILE_STORAGE_PATH')
@@ -29,6 +30,14 @@ class JSONLoggingAdapter(logging.LoggerAdapter):
 json_formatter = jsonlogger.JsonFormatter('%(asctime)s %(levelname)s %(filename)s %(funcName)s %(lineno)d %(message)s')
 handlers = [logging.FileHandler(LOCAL_FILE_LOG_PATH, mode='w'),
 			logging.StreamHandler(sys.stdout)]
+if ENVIRONMENT=='cloud':
+	import google.cloud.logging
+	from google.cloud.logging.handlers import CloudLoggingHandler
+	client = google.cloud.logging.Client()
+	handlers.append(client.get_default_handler()) #CloudLoggingHandler(client)
+	#handler.setFormatter(json_formatter)
+	#client.setup_logging()
+	#google.cloud.logging.handlers.setup_logging(handler, excluded_loggers=('google.cloud', 'google.auth', 'google_auth_httplib2','urllib3.connectionpool'))
 for handler in handlers:
 	handler.setFormatter(json_formatter)
 logging.basicConfig(level=logging.DEBUG,
