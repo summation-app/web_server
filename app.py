@@ -87,9 +87,8 @@ class AuthBackend(AuthenticationBackend):
 	Authorization: Bearer token
 	"""
 	async def authenticate(self, request):
-		if "Authorization" not in request.headers:
-			logger.error('authorization key not in headers')
-			return
+		if "Authorization" not in request.headers.keys():
+			raise AuthenticationError('Authorization header not present in request')
 		else:
 			header_value = request.headers.get("Authorization")
 			try:
