@@ -88,6 +88,7 @@ class AuthBackend(AuthenticationBackend):
 	"""
 	async def authenticate(self, request):
 		if "Authorization" not in request.headers.keys():
+			logger.debug('unauthenticated in AuthBackend')
 			return
 		else:
 			header_value = request.headers.get("Authorization")
