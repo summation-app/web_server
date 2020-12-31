@@ -96,7 +96,7 @@ else:
 
 	client = google.cloud.logging.Client()
 	handler = CloudLoggingHandler(client, transport=JSONLogTransport)
-	#setup_logging(handler, log_level=logging.DEBUG, excluded_loggers=('google.cloud', 'google.auth', 'google_auth_httplib2','urllib3.connectionpool'))
+	setup_logging(handler, log_level=logging.DEBUG, excluded_loggers=('google.cloud', 'google.auth', 'google_auth_httplib2','urllib3.connectionpool'))
 	# also log to console
 	#json_formatter = jsonlogger.JsonFormatter('%(asctime)s %(levelname)s %(filename)s %(funcName)s %(lineno)d %(message)s')
 	handler = logging.StreamHandler(sys.stdout)
