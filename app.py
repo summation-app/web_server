@@ -80,30 +80,36 @@ class User():
 		self.organization_id = organization_id
 		self.billing_plan = billing_plan
 
-class BasicAuthBackend(AuthenticationBackend):
+class AuthBackend(AuthenticationBackend):
+	"""
+	authorization for the summation web app (not the gateway)
+	uses JWT tokens in the header like:
+	Authorization: Bearer token
+	"""
 	async def authenticate(self, request):
-		if "auth" in request.query_params:
-			# websocket auth handled separately
+		if "authorization" not in request.headers:
+			logger.error('authorization key not in headers')
 			return
-		if "authorization" not in request.headers and "api_key" not in request.headers:
-			#logger.error('authorization/api_key key not in headers for url: ' + str(request.url))
-			return
-
-		if "authorization" in request.headers:
-			return
-		elif "api_key" in request.headers:
-			token = request.headers.get('api_key')
-			row = await Settings.filter(key='api_key', value=token).first()
-			if row:
-				uid = row.customer_id
-				organization_id = row.organization_id
-				billing_plan = None #TODO lookup
-			else:
-				raise AuthenticationError('Invalid API key credentials')
+		else:
+			header_value = request.headers.get("authorization")
+			try:
+				parts = header_value.split('Bearer ')
+				if len(parts)>1:
+					token = parts[1]
+					token_info = await validate_token(token, 0, 0)
+					if token_info['aud']!='summation': # self_hosted or cloud environments
+						raise AuthenticationError('Invalid token - not issued by summation web app')
+					organization_id = token_info['organization_id']
+					uid = token_info['uid']
+					billing_plan = None #TODO lookup
+				else:
+					raise AuthenticationError('Invalid Authorization Bearer in header')
+			except Exception as e:
+				raise AuthenticationError('Invalid Token')
 		return AuthCredentials(["authenticated"]), User(uid, organization_id, billing_plan)
 
 middleware = [
-	Middleware(AuthenticationMiddleware, backend=BasicAuthBackend()),
+	Middleware(AuthenticationMiddleware, backend=AuthBackend()),
 	Middleware(
 		RawContextMiddleware,
 		plugins=(
@@ -240,11 +246,13 @@ def generate_admin_jwt():
 		logger.error(e, exc_info=True)
 
 @app.route('/databases', methods=['POST'])
+@requires('authenticated')
 async def get_databases(request):
 	"""
 	"""
 	try:
 		databases = []
+		organization_id = request.user.organization_id
 		if results := await Databases.filter(organization_id=organization_id).all():
 			for result in results:
 				databases.append({'engine': result.engine, 'url': result.url, 'port': result.port, 'username': result.username, 'database_name': result.database_name})
@@ -253,10 +261,12 @@ async def get_databases(request):
 		logger.error(e, exc_info=True)
 
 @app.route('/auth_method', methods=['GET','POST'])
+@requires('authenticated')
 async def auth_method(request):
 	"""
 	"""
 	try:
+		organization_id = request.user.organization_id
 		if request.method=='GET':
 			auth_method = None
 			if results := await Settings.get(organization_id=organization_id, key='authentication_method'):
@@ -274,11 +284,13 @@ async def auth_method(request):
 
 
 @app.route('/apis', methods=['POST'])
+@requires('authenticated')
 async def get_apis(request):
 	"""
 	"""
 	try:
 		apis = []
+		organization_id = request.user.organization_id
 		if results := await APIs.filter(organization_id=organization_id).all():
 			for result in results:
 				apis.append({'name': result.name, 'url': result.url, 'method': result.method, 'authentication': result.authentication})
@@ -287,10 +299,12 @@ async def get_apis(request):
 		logger.error(e, exc_info=True)
 
 @app.route('/logging', methods=['POST'])
+@requires('authenticated')
 async def get_logging_config(request):
 	"""
 	"""
 	try:
+		organization_id = request.user.organization_id
 		logging_vendor, logging_config = None, None
 		if results := await Settings.get(organization_id=organization_id, key='logging_config'):
 			logging_config = results.value
@@ -301,6 +315,7 @@ async def get_logging_config(request):
 		logger.error(e, exc_info=True)
 
 @app.route('/save_logging', methods=['POST'])
+@requires('authenticated')
 async def generate_vector_config(request):
 	"""
 	save the log settings to a vector config file
@@ -312,9 +327,7 @@ async def generate_vector_config(request):
 		destination = data.get('destination')
 		settings = logging_config.get(destination)
 
-		token = data.get('token')
-		token_info = await validate_token(token, 0, 0)
-		organization_id = token_info['organization_id']
+		organization_id = request.user.organization_id
 
 		env_vars = {}# for saving to the database
 
@@ -500,14 +513,13 @@ async def generate_vector_config(request):
 		logger.error(e, exc_info=True)
 
 @app.route('/generate_gateway_tokens_for_new_app', methods=['POST'])
+@requires('authenticated')
 async def generate_gateway_tokens_for_new_app(request):
 	"""
 	"""
 	try:
 		data = await request.json()
-		token = data.get('token')
-		token_info = await validate_token(token, 0, 0)
-		organization_id = token_info['organization_id']
+		organization_id = request.user.organization_id
 		name = data.get('name')
 
 		app, created = await get_or_create(0, 'summation', Applications, organization_id=organization_id, name=name)
@@ -601,6 +613,8 @@ async def add_api(request):
 		bearer_token = data.get('bearer_token')
 		basic_auth = data.get('basic_auth')
 
+		organization_id = request.user.organization_id
+
 		# parse data based on authentication method
 		if auth_method := authentication.get('auth_method'):
 			if auth_method=='API Key in Headers':
@@ -622,7 +636,7 @@ async def add_api(request):
 
 		sql = "INSERT INTO \"APIs\"(organization_id, method, url, body, headers, authentication, production_key, development_key) VALUES(:organization_id, :method, :url, :body, :headers, :authentication, PGP_SYM_ENCRYPT(:production_key, :admin_password)\:\:text, PGP_SYM_ENCRYPT(:development_key, :admin_password)\:\:text)"
 		result = await query(0, 'summation', sql, {
-			'organization_id': 0,
+			'organization_id': organization_id,
 			'admin_password': ADMIN_PASSWORD, 
 			'method': method,
 			'url': url,
@@ -655,9 +669,11 @@ async def add_database(request):
 		schema = data.get('schema')
 		name = data.get('name')
 
+		organization_id = request.user.organization_id
+
 		sql = "INSERT INTO databases (organization_id, engine, url, port, username, password, database_name, schema, name) VALUES(:organization_id, :engine, :url, :port, :username, PGP_SYM_ENCRYPT(:password, :admin_password)\:\:text, :database_name, :schema, :name) RETURNING id"
 		database_record = {
-			'organization_id': 0,
+			'organization_id': organization_id,
 			'engine': engine,
 			'url': url,
 			'port': port,
@@ -1248,6 +1264,7 @@ async def execute_crud_query(method, table, params, organization_id, database_na
 		logger.error(e, exc_info=True)
 
 @app.route('/chain', methods=['POST'])
+@request_validator_timer
 async def chain(request):
 	"""
 	run steps of the chain in series
