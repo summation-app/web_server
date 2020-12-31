@@ -88,7 +88,7 @@ class AuthBackend(AuthenticationBackend):
 	"""
 	async def authenticate(self, request):
 		if "Authorization" not in request.headers:
-            return
+			return
 		else:
 			header_value = request.headers.get("Authorization")
 			try:
