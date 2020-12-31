@@ -100,7 +100,7 @@ else:
 	# also log to console
 	json_formatter = jsonlogger.JsonFormatter('%(asctime)s %(levelname)s %(filename)s %(funcName)s %(lineno)d %(message)s')
 	handler = logging.StreamHandler(sys.stdout)
-	acthandler.setFormatter(json_formatter)
+	handler.setFormatter(json_formatter)
 	logger = logging.getLogger()
 	logger.addHandler(handler)
 class LogServer(object):
