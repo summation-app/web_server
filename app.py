@@ -101,7 +101,7 @@ class AuthBackend(AuthenticationBackend):
 						logger.error('Invalid token - not issued by summation web app')
 						raise AuthenticationError('Invalid token - not issued by summation web app')
 					organization_id = token_info['organization_id']
-					uid = token_info['uid']
+					user_id = token_info['user_id']
 					billing_plan = None #TODO lookup
 				else:
 					logger.error('Invalid Authorization Bearer in header')
@@ -109,7 +109,7 @@ class AuthBackend(AuthenticationBackend):
 			except Exception as e:
 				logger.error(e, exc_info=True)
 				raise AuthenticationError('Invalid Token')
-		return AuthCredentials(["authenticated"]), User(uid, organization_id, billing_plan)
+		return AuthCredentials(["authenticated"]), User(user_id, organization_id, billing_plan)
 
 middleware = [
 	Middleware(AuthenticationMiddleware, backend=AuthBackend()),
@@ -242,7 +242,7 @@ def generate_admin_jwt():
 	try:
 		private_key = open(os.path.join(LOCAL_FILE_STORAGE_PATH, 'private_key.pem')).read()
 		header = {'alg': 'RS256', 'typ': 'JWT'}
-		payload = {'iss': 'summation', 'aud': 'summation', 'sub': 'admin', 'uid': 0, 'organization_id': 0, 'role_id': 0}
+		payload = {'iss': 'summation', 'aud': 'summation', 'sub': 'admin', 'uid': 0, 'user_id': 0, 'organization_id': 0, 'role_id': 0}
 		s = authlib_jwt.encode(header, payload, private_key)
 		return s.decode('ascii')
 	except Exception as e:
