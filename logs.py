@@ -98,9 +98,9 @@ else:
 	handler = CloudLoggingHandler(client, transport=JSONLogTransport)
 	setup_logging(handler, log_level=logging.DEBUG, excluded_loggers=('google.cloud', 'google.auth', 'google_auth_httplib2','urllib3.connectionpool'))
 	# also log to console
-	#json_formatter = jsonlogger.JsonFormatter('%(asctime)s %(levelname)s %(filename)s %(funcName)s %(lineno)d %(message)s')
+	json_formatter = jsonlogger.JsonFormatter('%(asctime)s %(levelname)s %(filename)s %(funcName)s %(lineno)d %(message)s')
 	handler = logging.StreamHandler(sys.stdout)
-	#handler.setFormatter(json_formatter)
+	acthandler.setFormatter(json_formatter)
 	logger = logging.getLogger()
 	logger.addHandler(handler)
 class LogServer(object):
