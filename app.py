@@ -233,9 +233,70 @@ def generate_admin_jwt():
 	try:
 		private_key = open(os.path.join(LOCAL_FILE_STORAGE_PATH, 'private_key.pem')).read()
 		header = {'alg': 'RS256', 'typ': 'JWT'}
-		payload = {'iss': 'summation', 'sub': 'admin', 'uid': 0, 'organization_id': 0, 'role_id': 0}
+		payload = {'iss': 'summation', 'aud': 'summation', 'sub': 'admin', 'uid': 0, 'organization_id': 0, 'role_id': 0}
 		s = authlib_jwt.encode(header, payload, private_key)
 		return s.decode('ascii')
+	except Exception as e:
+		logger.error(e, exc_info=True)
+
+@app.route('/databases', methods=['POST'])
+async def get_databases(request):
+	"""
+	"""
+	try:
+		databases = []
+		if results := await Databases.filter(organization_id=organization_id).all():
+			for result in results:
+				databases.append({'engine': result.engine, 'url': result.url, 'port': result.port, 'username': result.username, 'database_name': result.database_name})
+		return JSONResponse(databases, status_code=200)
+	except Exception as e:
+		logger.error(e, exc_info=True)
+
+@app.route('/auth_method', methods=['GET','POST'])
+async def auth_method(request):
+	"""
+	"""
+	try:
+		if request.method=='GET':
+			auth_method = None
+			if results := await Settings.get(organization_id=organization_id, key='authentication_method'):
+				auth_method = result.value
+			return JSONResponse(auth_method, status_code=200)
+		elif request.method=='POST':
+			data = await request.json()
+			values = data.get('values')
+			setting, created = await get_or_create(0, 'summation', Settings, organization_id=organization_id, key='authentication_method')
+			setting.value = values
+			await setting.save()
+			return JSONResponse(True, status_code=200)
+	except Exception as e:
+		logger.error(e, exc_info=True)
+
+
+@app.route('/apis', methods=['POST'])
+async def get_apis(request):
+	"""
+	"""
+	try:
+		apis = []
+		if results := await APIs.filter(organization_id=organization_id).all():
+			for result in results:
+				apis.append({'name': result.name, 'url': result.url, 'method': result.method, 'authentication': result.authentication})
+		return JSONResponse(apis, status_code=200)
+	except Exception as e:
+		logger.error(e, exc_info=True)
+
+@app.route('/logging', methods=['POST'])
+async def get_logging_config(request):
+	"""
+	"""
+	try:
+		logging_vendor, logging_config = None, None
+		if results := await Settings.get(organization_id=organization_id, key='logging_config'):
+			logging_config = results.value
+		if results := await Settings.get(organization_id=organization_id, key='logging_vendor'):
+			logging_vendor = results.value
+		return JSONResponse({'logging_config': logging_config, 'logging_vendor': logging_vendor}, status_code=200)
 	except Exception as e:
 		logger.error(e, exc_info=True)
 
@@ -1075,6 +1136,13 @@ async def database_gateway(request, organization_id, app_id):
 			if settings:
 				scope = settings.value.get('scope')
 				logger.debug(scope)
+
+				if ENVIRONMENT=='cloud' and ((database_name=='summation' and scope=='development') or (database_name=='summation' and token_info.get('aud')!='summation')):
+					# development tokens aren't allowed to query the summation database / add whitelisted queries in the cloud
+					# only production tokens with whitelisted queries
+					# end-users of applications also aren't allowed to query the summation database themselves
+					return JSONResponse(None, status_code=403)
+
 				params, headers = await bind_params(organization_id, 'summation', params, scope, token_info)
 				if sql:
 					if scope=='development':
@@ -1117,7 +1185,7 @@ async def database_gateway(request, organization_id, app_id):
 
 async def execute_crud_query(method, table, params, organization_id, database_name):
 	try:
-		if organization_id==0 and database_name=='summation' and table in globals().keys():
+		if database_name=='summation' and table in globals().keys():
 			# for connecting to non-summation databases, don't import all classes
 			# instead introspect tables, and add classes to a dict to avoid naming clashes
 			table_class = globals()[table]
