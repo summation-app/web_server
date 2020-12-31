@@ -87,7 +87,7 @@ class AuthBackend(AuthenticationBackend):
 	Authorization: Bearer token
 	"""
 	async def authenticate(self, request):
-		if "Authorization" not in request.headers:
+		if "Authorization" not in request.headers.keys():
 			return
 		else:
 			header_value = request.headers.get("Authorization")
@@ -97,13 +97,16 @@ class AuthBackend(AuthenticationBackend):
 					token = parts[1]
 					token_info = await validate_token(token, 0, 0)
 					if token_info['aud']!='summation': # self_hosted or cloud environments
+						logger.error('Invalid token - not issued by summation web app')
 						raise AuthenticationError('Invalid token - not issued by summation web app')
 					organization_id = token_info['organization_id']
 					uid = token_info['uid']
 					billing_plan = None #TODO lookup
 				else:
+					logger.error('Invalid Authorization Bearer in header')
 					raise AuthenticationError('Invalid Authorization Bearer in header')
 			except Exception as e:
+				logger.error(e, exc_info=True)
 				raise AuthenticationError('Invalid Token')
 		return AuthCredentials(["authenticated"]), User(uid, organization_id, billing_plan)
 
