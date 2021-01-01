@@ -256,7 +256,7 @@ async def get_databases(request):
 	try:
 		databases = []
 		organization_id = request.user.organization_id
-		if results := await Databases.filter(organization_id=organization_id).all():
+		if results := await Databases.filter(organization_id=organization_id):
 			for result in results:
 				databases.append({'engine': result.engine, 'url': result.url, 'port': result.port, 'username': result.username, 'database_name': result.database_name})
 		return JSONResponse(databases, status_code=200)
@@ -294,7 +294,7 @@ async def get_apis(request):
 	try:
 		apis = []
 		organization_id = request.user.organization_id
-		if results := await APIs.filter(organization_id=organization_id).all():
+		if results := await APIs.filter(organization_id=organization_id):
 			for result in results:
 				apis.append({'name': result.name, 'url': result.url, 'method': result.method, 'authentication': result.authentication})
 		return JSONResponse(apis, status_code=200)
