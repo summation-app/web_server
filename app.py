@@ -1154,7 +1154,6 @@ async def database_gateway(request, organization_id, app_id):
 			results = None
 			if settings:
 				scope = settings.value.get('scope')
-				logger.debug(scope)
 
 				if ENVIRONMENT=='cloud' and ((database_name=='summation' and scope=='development') or (database_name=='summation' and token_info.get('aud')!='summation')):
 					# development tokens aren't allowed to query the summation database / add whitelisted queries in the cloud
