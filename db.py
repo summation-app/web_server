@@ -535,7 +535,7 @@ def query(org_id, database_name, sql, parameters={}):
 		session, session_factory = get_database_session(org_id, database_name)
 		compiled_query = text(sql)
 		bind_params = compiled_query._bindparams
-		if bind_params and set(bind_params.keys())!=set(parameters.keys()):
+		if bind_params and parameters and set(bind_params.keys())!=set(parameters.keys()):
 			# didn't explicitly pass in each required parameter
 			# got lazy, and passed in locals() with more or less values than we need
 			required_params = {}
