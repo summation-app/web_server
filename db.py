@@ -297,6 +297,7 @@ class Queries(Base, Mixins):
 	id = Column(Integer, primary_key=True)
 	description = Column(String, nullable=True)
 	organization_id = Column(Integer, nullable=True)
+	application_id = Column(Integer, nullable=True)
 	value = Column(String, nullable=True)
 	enabled = Column(Boolean, nullable=True)
 	method = Column(String, nullable=True)

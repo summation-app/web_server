@@ -1166,12 +1166,12 @@ async def database_gateway(request, organization_id, app_id):
 				if sql:
 					if scope=='development':
 						# save to queries table if not already there
-						record, created = await get_or_create(organization_id, database_name, Queries, value=sql, enabled=True, role_id=role_id, organization_id=organization_id)
+						record, created = await get_or_create(0, 'summation', Queries, value=sql, enabled=True, role_id=role_id, organization_id=organization_id, application_id=app_id)
 						# execute query
 						results = await query(organization_id, database_name, sql, params)
 					elif scope=='production':
 						# check if in queries table
-						if record := await Queries.get(value=sql, enabled=True, role_id=role_id, organization_id=organization_id):
+						if record := await Queries.get(value=sql, enabled=True, role_id=role_id, organization_id=organization_id, application_id=app_id):
 							# if present, execute query
 							results = await query(organization_id, database_name, sql, params)
 						else:
@@ -1181,12 +1181,12 @@ async def database_gateway(request, organization_id, app_id):
 				elif method and table:
 					if scope=='development':
 						# save to queries table if not already there
-						record, created = await get_or_create(organization_id, database_name, Queries, table_name=table, method=method, parameters=list(params.keys()), enabled=True, role_id=role_id, organization_id=organization_id)
+						record, created = await get_or_create(0, 'summation', Queries, table_name=table, method=method, parameters=list(params.keys()), enabled=True, role_id=role_id, organization_id=organization_id, application_id=app_id)
 						# execute query
 						return await execute_crud_query(method, table, params, organization_id, database_name)
 					elif scope=='production':
 						# check if in queries table
-						if record := await Queries.get(table_name=table, method=method, parameters=list(params.keys()), enabled=True, role_id=role_id, organization_id=organization_id):
+						if record := await Queries.get(table_name=table, method=method, parameters=list(params.keys()), enabled=True, role_id=role_id, organization_id=organization_id, application_id=app_id):
 							# if present, execute query
 							return await execute_crud_query(method, table, params, organization_id, database_name)
 						else:
