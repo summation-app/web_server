@@ -25,6 +25,7 @@ subclasses = {}
 @dataclass
 class JWTVerifier():
 	key = None
+	audience = None
 	token: str
 
 	def __init_subclass__(cls, **kwargs):
@@ -57,18 +58,22 @@ class JWTVerifier():
 			if not claims:
 				claims = self.get_token_claims()
 			claims.validate()
+			if self.audience:
+				assert self.audience==claims.get('audience')
 			return claims
 		except (
 			MissingClaimError,
 			InvalidClaimError,
 			ExpiredTokenError,
-			InvalidTokenError
+			InvalidTokenError,
+			AssertionError
 		) as e:
 			logger.error(e, exc_info=True)
 
 @dataclass
 class Firebase(JWTVerifier):
 	_protocol = 'firebase'
+	audience: str # equals the firebase Project ID
 
 	def __post_init__(self):
 		self.certificate_url= 'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com'
@@ -89,16 +94,19 @@ class Okta(JWTVerifier):
 	def __post_init__(self):
 		jwks_url = f"https://{self.domain}/oauth2/default/v1/keys"
 		self.key = self.get_key(jwks_url, jwt.get_unverified_header(self.token))
+		self.audience = self.client_id # normalizing, for the audience check in verify_token
 
 @dataclass
 class Cognito(JWTVerifier):
 	_protocol = 'cognito'
 	region: str
 	user_pool_id: str
+	client_id: str
 	
 	def __post_init__(self):
 		jwks_url = f"https://cognito-idp.{self.region}.amazonaws.com/{self.user_pool_id}/.well-known/jwks.json"
 		self.key = self.get_key(jwks_url, jwt.get_unverified_header(self.token))
+		self.audience = self.client_id # normalizing, for the audience check in verify_token
 
 @dataclass
 class Auth0(JWTVerifier):
@@ -110,3 +118,4 @@ class Auth0(JWTVerifier):
 		issuer = f"https://{self.domain}/"
 		jwks_url = f"https://{self.domain}/.well-known/jwks.json"
 		self.key = self.get_key(jwks_url, jwt.get_unverified_header(self.token))
+		self.audience = self.client_id # normalizing, for the audience check in verify_token
