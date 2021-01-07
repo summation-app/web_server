@@ -252,14 +252,17 @@ def generate_admin_jwt():
 @requires('authenticated')
 async def get_databases(request):
 	"""
+	we use raw SQL as we need to decrypt the credentials
 	"""
 	try:
 		databases = []
 		organization_id = request.user.organization_id
-		if results := await Databases.filter(organization_id=organization_id):
-			for result in results:
-				databases.append({'engine': result.engine, 'url': result.url, 'port': result.port, 'username': result.username, 'database_name': result.database_name})
-		return JSONResponse(databases, status_code=200)
+
+		sql = "SELECT id, engine, url, port, username, PGP_SYM_DECRYPT(password\:\:bytea, :admin_key) AS password, database_name, schema, name FROM databases WHERE organization_id=:organization_id"
+		if results := await query(0, 'summation', sql, {'organization_id': organization_id, 'admin_key': ADMIN_PASSWORD}):
+			return JSONResponse(results, status_code=200)
+		else:
+			return JSONResponse([], status_code=200)
 	except Exception as e:
 		logger.error(e, exc_info=True)
 
@@ -290,14 +293,52 @@ async def auth_method(request):
 @requires('authenticated')
 async def get_apis(request):
 	"""
+	we use raw SQL as we need to decrypt the credentials
 	"""
 	try:
 		apis = []
 		organization_id = request.user.organization_id
-		if results := await APIs.filter(organization_id=organization_id):
-			for result in results:
-				apis.append({'name': result.name, 'url': result.url, 'method': result.method, 'authentication': result.authentication})
-		return JSONResponse(apis, status_code=200)
+
+		sql = "SELECT id, name, url, PGP_SYM_DECRYPT(production_key\:\:bytea, :admin_key) AS production_key, PGP_SYM_DECRYPT(development_key\:\:bytea, :admin_key) AS development_key, method, authentication, value, headers, body FROM \"APIs\" WHERE organization_id=:organization_id"
+		if results := await query(0, 'summation', sql, {'organization_id': organization_id, 'admin_key': ADMIN_PASSWORD}):
+			return JSONResponse(results, status_code=200)
+		else:
+			return JSONResponse([], status_code=200)
+	except Exception as e:
+		logger.error(e, exc_info=True)
+
+@app.route('/approved_queries_requests', methods=['GET','DELETE'])
+@requires('authenticated')
+async def approved_queries_requests(request):
+	"""
+	we use raw SQL as we need to decrypt the credentials
+	"""
+	try:
+		organization_id = request.user.organization_id
+
+		if request.method=='GET':
+			api_requests = []
+			database_queries = []
+			if results := await Requests.filter(organization_id=organization_id):
+				for result in results:
+					api_requests.append({'id': result.id, 'url': result.url, 'method': result.method, 'type': 'api_request'})
+			if results := await Queries.filter(organization_id=organization_id):
+				for result in results:
+					database_queries.append({'id': result.id, 'value': result.value, 'method': result.method, 'table_name': result.table_name, 'parameters': result.parameters, 'type': 'database_query'})
+			return JSONResponse({'requests': api_requests,'queries': database_queries}, status_code=200)
+		elif request.method=='DELETE':
+			data = await request.json()
+			record_type = data.get('type')
+			id = data.get('id')
+			if record_type=='api_request':
+				record = await Requests.get(id=id, organization_id=organization_id)
+			elif record_type=='database_query':
+				record = await Queries.get(id=id, organization_id=organization_id)
+			if record:
+				await record.delete()
+			else:
+				logger.error('could not find record to delete')
+			return JSONResponse(True, status_code=200)
 	except Exception as e:
 		logger.error(e, exc_info=True)
 
@@ -597,15 +638,16 @@ async def generate_gateway_tokens(organization_id, force=True, app_id=None):
 	except Exception as e:
 		logger.error(e, exc_info=True)
 
-@app.route("/add_api", methods=['POST'])
+@app.route("/save_api", methods=['POST','PATCH','DELETE'])
 @requires('authenticated')
-async def add_api(request):
+async def save_api(request):
 	"""
 	normally we could save directly to the database from the admin app,
 	but because we need to encrypt credentials this has to be done server-side
 	"""
 	try:
 		data = await request.json()
+		id = data.get('id')
 		method = data.get('method')
 		url = data.get('url')
 		body = data.get('body')
@@ -637,32 +679,59 @@ async def add_api(request):
 				if token := bearer_token.get('development'):
 					development_key = token
 
-		sql = "INSERT INTO \"APIs\"(organization_id, method, url, body, headers, authentication, production_key, development_key) VALUES(:organization_id, :method, :url, :body, :headers, :authentication, PGP_SYM_ENCRYPT(:production_key, :admin_password)\:\:text, PGP_SYM_ENCRYPT(:development_key, :admin_password)\:\:text)"
-		result = await query(0, 'summation', sql, {
-			'organization_id': organization_id,
-			'admin_password': ADMIN_PASSWORD, 
-			'method': method,
-			'url': url,
-			'body': None,
-			'headers': json.dumps(headers),
-			'production_key': production_key,
-			'development_key': development_key,
-			'authentication': json.dumps(authentication)})
-		logger.debug(result)
+		if request.method=='POST':
+			sql = "INSERT INTO \"APIs\"(organization_id, method, url, body, headers, authentication, production_key, development_key) VALUES(:organization_id, :method, :url, :body, :headers, :authentication, PGP_SYM_ENCRYPT(:production_key, :admin_password)\:\:text, PGP_SYM_ENCRYPT(:development_key, :admin_password)\:\:text)"
+			result = await query(0, 'summation', sql, {
+				'organization_id': organization_id,
+				'admin_password': ADMIN_PASSWORD, 
+				'method': method,
+				'url': url,
+				'body': None,
+				'headers': json.dumps(headers),
+				'production_key': production_key,
+				'development_key': development_key,
+				'authentication': json.dumps(authentication)})
+			logger.debug(result)
+		elif request.method=='PATCH' and id:
+			if record := await APIs.get(id=id, organization_id=organization_id):
+				sql = "UPDATE \"APIs\" SET method=:method, url=:url, headers=:headers, authentication=:authentication, production_key=PGP_SYM_ENCRYPT(:production_key, :admin_password)\:\:text, development_key=PGP_SYM_ENCRYPT(:development_key, :admin_password)\:\:text WHERE organization_id=:organization_id AND id=:id"
+				result = await query(0, 'summation', sql, {
+					'id': id,
+					'organization_id': organization_id,
+					'admin_password': ADMIN_PASSWORD, 
+					'method': method,
+					'url': url,
+					'body': None,
+					'headers': json.dumps(headers),
+					'production_key': production_key,
+					'development_key': development_key,
+					'authentication': json.dumps(authentication)})
+				logger.debug(result)
+			else:
+				logger.error('could not find record to update')
+		elif request.method=='DELETE' and id:
+			if record := await APIs.get(id=id, organization_id=organization_id):
+				await record.delete()
+			else:
+				logger.error('could not find record to delete')
+		else:
+			logger.error('missing data in request')
+		
 		return JSONResponse(True)
 	except Exception as e:
 		logger.error(e, exc_info=True)
 		return JSONResponse(False)
 
-@app.route("/add_database", methods=['POST'])
+@app.route("/save_database", methods=['POST','PATCH','DELETE'])
 @requires('authenticated')
-async def add_database(request):
+async def save_database(request):
 	"""
 	normally we could save directly to the database from the admin app,
 	but because we need to encrypt credentials this has to be done server-side
 	"""
 	try:
 		data = await request.json()
+		id = data.get('id') # for existing records
 		engine = data.get('engine')
 		url = data.get('url')
 		port = data.get('port')
@@ -674,29 +743,57 @@ async def add_database(request):
 
 		organization_id = request.user.organization_id
 
-		sql = "INSERT INTO databases (organization_id, engine, url, port, username, password, database_name, schema, name) VALUES(:organization_id, :engine, :url, :port, :username, PGP_SYM_ENCRYPT(:password, :admin_password)\:\:text, :database_name, :schema, :name) RETURNING id"
-		database_record = {
-			'organization_id': organization_id,
-			'engine': engine,
-			'url': url,
-			'port': port,
-			'username': username,
-			'password': password,
-			'admin_password': ADMIN_PASSWORD, 
-			'database_name': database_name,
-			'schema': schema,
-			'name': name
-		}
-		result = await query(0, 'summation', sql, database_record)
-		logger.debug(result)
+		if request.method=='POST':
+			sql = "INSERT INTO databases (organization_id, engine, url, port, username, password, database_name, schema, name) VALUES(:organization_id, :engine, :url, :port, :username, PGP_SYM_ENCRYPT(:password, :admin_password)\:\:text, :database_name, :schema, :name) RETURNING id"
+			database_record = {
+				'organization_id': organization_id,
+				'engine': engine,
+				'url': url,
+				'port': port,
+				'username': username,
+				'password': password,
+				'admin_password': ADMIN_PASSWORD, 
+				'database_name': database_name,
+				'schema': schema,
+				'name': name
+			}
+			result = await query(0, 'summation', sql, database_record)
+			logger.debug(result)
+			database_record['id'] = result
+		elif request.method=='PATCH' and id:
+			if record := await Databases.get(id=id, organization_id=organization_id):
+				sql = "UPDATE databases SET password=PGP_SYM_ENCRYPT(:password, :admin_password)\:\:text, engine=:engine, url=:url, port=:port, username=:username, database_name=:database_name, schema=:schema, name=:name WHERE organization_id=:organization_id AND id=:id"
+				database_record = {
+					'id': id,
+					'organization_id': organization_id,
+					'engine': engine,
+					'url': url,
+					'port': port,
+					'username': username,
+					'password': password,
+					'admin_password': ADMIN_PASSWORD, 
+					'database_name': database_name,
+					'schema': schema,
+					'name': name
+				}
+				result = await query(0, 'summation', sql, database_record)
+			else:
+				logger.error('could not find record to update')
+		elif request.method=='DELETE' and id:
+			if record := await Databases.get(id=id, organization_id=organization_id):
+				await record.delete()
+			else:
+				logger.error('could not find record to delete')
+		else:
+			logger.error('missing data in request')
 
 		# attempt to connect to the database
 		# and add it to the 'db_connections' dictionary
-		database_record['id'] = result
-		try:
-			connection = connect_to_database(database_record)
-		except Exception as e:
-			return JSONResponse({'status': False, 'error': str(e)})
+		if request.method in ['POST','PATCH']:
+			try:
+				connection = connect_to_database(database_record)
+			except Exception as e:
+				return JSONResponse({'status': False, 'error': str(e)})
 		return JSONResponse({'status': True})
 	except Exception as e:
 		logger.error(e, exc_info=True)
