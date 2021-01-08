@@ -272,6 +272,7 @@ class Requests(Base, Mixins):
 	organization_id = Column(Integer, nullable=True)
 	url = Column(String, nullable=True)
 	method = Column(String, nullable=True)
+	enabled = Column(Boolean, nullable=True)
 	value = Column(JSONB, nullable=True)
 	api_id = Column(Integer, nullable=True)
 	role_id = Column(Integer, nullable=True)

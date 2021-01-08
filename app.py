@@ -307,7 +307,7 @@ async def get_apis(request):
 	except Exception as e:
 		logger.error(e, exc_info=True)
 
-@app.route('/approved_queries_requests', methods=['GET','DELETE'])
+@app.route('/approved_queries_requests', methods=['GET','POST','DELETE'])
 @requires('authenticated')
 async def approved_queries_requests(request):
 	"""
@@ -321,26 +321,30 @@ async def approved_queries_requests(request):
 			database_queries = []
 			if results := await Requests.filter(organization_id=organization_id):
 				for result in results:
-					api_requests.append({'id': result.id, 'url': result.url, 'method': result.method, 'type': 'api_request'})
+					api_requests.append({'id': result.id, 'url': result.url, 'method': result.method, 'type': 'api_request', 'enabled': result.enabled})
 			if results := await Queries.filter(organization_id=organization_id):
 				for result in results:
-					database_queries.append({'id': result.id, 'value': result.value, 'method': result.method, 'table_name': result.table_name, 'parameters': result.parameters, 'type': 'database_query'})
+					database_queries.append({'id': result.id, 'value': result.value, 'method': result.method, 'table_name': result.table_name, 'parameters': result.parameters, 'type': 'database_query', 'enabled': result.enabled})
 			return JSONResponse({'requests': api_requests,'queries': database_queries}, status_code=200)
-		elif request.method=='DELETE':
+		elif request.method=='POST': # to enable/disable rows
 			data = await request.json()
-			record_type = data.get('type')
+			record_type = data.get('record_type')
 			id = data.get('id')
+			enabled = data.get('enabled')
 			if record_type=='api_request':
 				record = await Requests.get(id=id, organization_id=organization_id)
 			elif record_type=='database_query':
 				record = await Queries.get(id=id, organization_id=organization_id)
 			if record:
-				await record.delete()
+				record.enabled = enabled
+				await record.save()
 			else:
 				logger.error('could not find record to delete')
+				return JSONResponse(False, status_code=500)
 			return JSONResponse(True, status_code=200)
 	except Exception as e:
 		logger.error(e, exc_info=True)
+		return JSONResponse(False, status_code=500)
 
 @app.route('/logging', methods=['POST'])
 @requires('authenticated')
