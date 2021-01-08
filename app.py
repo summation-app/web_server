@@ -661,23 +661,24 @@ async def save_api(request):
 		organization_id = request.user.organization_id
 
 		# parse data based on authentication method
-		if auth_method := authentication.get('auth_method'):
-			if auth_method=='API Key in Headers':
-				headers = {header_key: '_KEY_'}
-			elif auth_method=='API Key in URL parameters':
-				pass
-			elif auth_method=='Basic Auth':
-				authentication['basic_auth'] = basic_auth # TODO for use in generating the BasicAuth hash when used
-				if password_production := basic_auth.get('password_production'):
-					production_key = password_production
-				if password_development := basic_auth.get('password_development'):
-					development_key = password_development
-			elif auth_method=='Bearer Token':
-				headers = {'Authentication': 'Bearer _KEY_'} # TODO have to replace this value
-				if token := bearer_token.get('production'):
-					production_key = token
-				if token := bearer_token.get('development'):
-					development_key = token
+		if authentication:
+			if auth_method := authentication.get('auth_method'):
+				if auth_method=='API Key in Headers':
+					headers = {header_key: '_KEY_'}
+				elif auth_method=='API Key in URL parameters':
+					pass
+				elif auth_method=='Basic Auth':
+					authentication['basic_auth'] = basic_auth # TODO for use in generating the BasicAuth hash when used
+					if password_production := basic_auth.get('password_production'):
+						production_key = password_production
+					if password_development := basic_auth.get('password_development'):
+						development_key = password_development
+				elif auth_method=='Bearer Token':
+					headers = {'Authentication': 'Bearer _KEY_'} # TODO have to replace this value
+					if token := bearer_token.get('production'):
+						production_key = token
+					if token := bearer_token.get('development'):
+						development_key = token
 
 		if request.method=='POST':
 			sql = "INSERT INTO \"APIs\"(organization_id, method, url, body, headers, authentication, production_key, development_key) VALUES(:organization_id, :method, :url, :body, :headers, :authentication, PGP_SYM_ENCRYPT(:production_key, :admin_password)\:\:text, PGP_SYM_ENCRYPT(:development_key, :admin_password)\:\:text)"
@@ -718,7 +719,7 @@ async def save_api(request):
 				return JSONResponse({'status': False, 'error': 'could not find record to delete'})
 		else:
 			logger.error('missing data in request')
-			return JSONResponse({'status': False, 'error': str(e)})
+			return JSONResponse({'status': False, 'error': 'missing data in request'})
 		
 		return JSONResponse({'status': True})
 	except Exception as e:
