@@ -276,7 +276,7 @@ async def auth_method(request):
 		if request.method=='GET':
 			auth_method = None
 			if results := await Settings.get(organization_id=organization_id, key='authentication_method'):
-				auth_method = result.value
+				auth_method = results.value
 			return JSONResponse(auth_method, status_code=200)
 		elif request.method=='POST':
 			data = await request.json()
