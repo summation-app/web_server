@@ -269,6 +269,7 @@ class Events(Base, Mixins):
 class Requests(Base, Mixins):
 	__tablename__ = 'requests'
 	id = Column(Integer, primary_key=True)
+	organization_id = Column(Integer, nullable=True)
 	url = Column(String, nullable=True)
 	method = Column(String, nullable=True)
 	value = Column(JSONB, nullable=True)

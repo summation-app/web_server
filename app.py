@@ -876,7 +876,7 @@ async def api(scope, organization_id, method, url, data, role_id, parameters, jw
 				if api_match := await query(0, 'summation', sql, {'admin_key': ADMIN_PASSWORD, 'url': url_prefix, 'organization_id': organization_id}):
 					api = api_match[0]
 					# add full URL to requests table, link to apis.id
-					record, created = await get_or_create(0, 'summation', Requests, role_id=role_id, method=method, url=url, api_id=api['id'])
+					record, created = await get_or_create(0, 'summation', Requests, role_id=role_id, organization_id=organization_id, method=method, url=url, api_id=api['id'])
 					auth = None
 					api_url, headers, parameters, auth = prepare_authentication(api['authentication'], scope, api['production_key'], api['development_key'], api['url'], headers, data, parameters)
 					parameters, headers = await bind_params(organization_id, 'summation', parameters, scope, jwt_claims, headers=headers)
