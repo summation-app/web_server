@@ -709,18 +709,21 @@ async def save_api(request):
 				logger.debug(result)
 			else:
 				logger.error('could not find record to update')
+				return JSONResponse({'status': False, 'error': 'could not find record to update'})
 		elif request.method=='DELETE' and id:
 			if record := await APIs.get(id=id, organization_id=organization_id):
 				await record.delete()
 			else:
 				logger.error('could not find record to delete')
+				return JSONResponse({'status': False, 'error': 'could not find record to delete'})
 		else:
 			logger.error('missing data in request')
+			return JSONResponse({'status': False, 'error': str(e)})
 		
-		return JSONResponse(True)
+		return JSONResponse({'status': True})
 	except Exception as e:
 		logger.error(e, exc_info=True)
-		return JSONResponse(False)
+		return JSONResponse({'status': False, 'error': str(e)})
 
 @app.route("/save_database", methods=['POST','PATCH','DELETE'])
 @requires('authenticated')
@@ -779,13 +782,16 @@ async def save_database(request):
 				result = await query(0, 'summation', sql, database_record)
 			else:
 				logger.error('could not find record to update')
+				return JSONResponse({'status': False, 'error': 'could not find record to update'})
 		elif request.method=='DELETE' and id:
 			if record := await Databases.get(id=id, organization_id=organization_id):
 				await record.delete()
 			else:
 				logger.error('could not find record to delete')
+				return JSONResponse({'status': False, 'error': 'could not find record to delete'})
 		else:
 			logger.error('missing data in request')
+			return JSONResponse({'status': False, 'error': 'missing data in request'})
 
 		# attempt to connect to the database
 		# and add it to the 'db_connections' dictionary
