@@ -343,6 +343,14 @@ class Subscriptions(Base, Mixins):
 	organization_id = Column(Integer, nullable=True)
 	plan = Column(String, nullable=True)
 	active_flag = Column(Boolean, nullable=True)
+class Tunnels(Base, Mixins):
+	__tablename__ = 'tunnels'
+	id = Column(Integer, primary_key=True)
+	organization_id = Column(Integer, nullable=True)
+	date_created = Column(DateTime, nullable=True)
+	client_port = Column(Integer, nullable=True)
+	server_port = Column(Integer, nullable=True)
+	uuid = Column(String, nullable=True)
 
 db_connections = defaultdict(dict)
 db_classes = defaultdict(lambda: defaultdict(dict))
