@@ -19,6 +19,7 @@ ENV PYTHONUNBUFFERED True
 
 RUN apt-get update --fix-missing
 RUN apt-get install -y unixodbc-dev
+#RUN apt-get install build-essential libssl-dev libmysqlclient-dev python3-dev
 
 # https://pythonspeed.com/articles/activate-virtualenv-dockerfile/
 # Every RUN/CMD line in the Dockerfile is a different process. Running activate in a separate RUN has no effect on future RUN calls; 
