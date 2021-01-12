@@ -38,6 +38,7 @@ RUN pip install -r requirements.txt
 COPY app.py .
 COPY db.py .
 COPY jwt_verifier.py .
+COPY logs.py .
 
 # execute the web app
 #ENV UUID=$(cat /proc/sys/kernel/random/uuid)
