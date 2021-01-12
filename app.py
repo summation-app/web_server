@@ -92,10 +92,13 @@ class AuthBackend(AuthenticationBackend):
 			return
 		else:
 			header_value = request.headers.get("authorization")
+			split = header_value.strip().split(' ')
 			try:
-				parts = header_value.split('Bearer ')
-				if len(parts)>1:
-					token = parts[1]
+				if len(split)==2 and split[0].strip().lower() == 'basic' and ENVIRONMENT=='self_hosted':
+					# handled by /login function
+					return
+				elif len(split)==2 and split[0].strip().lower() == 'bearer':
+					token = split[1]
 					token_info = await validate_token(token, 0, 0)
 					if token_info['aud']!='summation': # self_hosted or cloud environments
 						logger.error('Invalid token - not issued by summation web app')
@@ -175,17 +178,7 @@ async def login(request):
 		if header:
 			split = header.strip().split(' ')
 
-			# If split is only one element, try to decode the username and password
-			# directly.
-			if len(split) == 1:
-				try:
-					username, password = b64decode(split[0]).decode().split(':', 1)
-				except:
-					return JSONResponse(True, status_code=401)
-
-			# If there are only two elements, check the first and ensure it says
-			# 'basic' so that we know we're about to decode the right thing.
-			elif len(split) == 2:
+			if len(split) == 2:
 				if split[0].strip().lower() == 'basic':
 					try:
 						username, password = b64decode(split[1]).decode().split(':', 1)
@@ -193,8 +186,6 @@ async def login(request):
 						return JSONResponse(True, status_code=401)
 				else:
 					return JSONResponse(True, status_code=401)
-
-			# If there are more than 2 elements, something crazy must be happening.
 			else:
 				return JSONResponse(True, status_code=401)
 
