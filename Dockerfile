@@ -5,7 +5,6 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # pass in build args
 ARG ENVIRONMENT
-ARG FIREBASE_DATABASE_URL
 # set environment variables to build args
 ENV ENVIRONMENT ${ENVIRONMENT}
 ENV LOCAL_FILE_STORAGE_PATH /var/lib/summation_web_server
