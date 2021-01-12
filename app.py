@@ -59,10 +59,10 @@ async def startup():
 	global log_server
 	session = ClientSession()
 	if ENVIRONMENT!='TEST':
+		await setup_pgcrypto()
 		await connect_to_all_databases()
 		generate_public_key_pair()
 		await create_default_roles_apps()
-		await setup_pgcrypto()
 		if ENVIRONMENT=='self_hosted':
 			log_server = LogServer(await Settings.get(organization_id=0, key='logging_env_vars'))
 	else:
