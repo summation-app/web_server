@@ -624,11 +624,11 @@ async def generate_gateway_tokens(organization_id, force=True, app_id=None):
 			if force:
 				await Settings(organization_id=organization_id, application_id=app_id, key='gateway_token', value={'scope': scope, 'key': tokens[scope]}).save()
 			else:
-				if results := await query(0, 'summation', "SELECT * FROM settings WHERE organization_id=:organization_id AND application_id=:application_id AND key=:key", {'organization_id': organization_id, 'application_id': app_id, 'key': 'gateway_token'}):# TODO and value->scope==scope
-					if len(results) < 2:
-						settings, created = await get_or_create(0, 'summation', Settings, organization_id=organization_id, application_id=app_id, key='gateway_token', value={'scope': scope, 'key': tokens[scope]}) # TODO will always create new token
-					else:
-						logger.debug('gateway tokens already exist - not creating')
+				results = await query(0, 'summation', "SELECT * FROM settings WHERE organization_id=:organization_id AND application_id=:application_id AND key=:key", {'organization_id': organization_id, 'application_id': app_id, 'key': 'gateway_token'})# TODO and value->scope==scope
+				if not results or len(results) < 2:
+					settings, created = await get_or_create(0, 'summation', Settings, organization_id=organization_id, application_id=app_id, key='gateway_token', value={'scope': scope, 'key': tokens[scope]}) # TODO will always create new token
+				else:
+					logger.debug('gateway tokens already exist - not creating')
 		return tokens
 	except Exception as e:
 		logger.error(e, exc_info=True)
