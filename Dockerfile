@@ -6,12 +6,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 # pass in build args
 ARG ENVIRONMENT
 ARG FIREBASE_DATABASE_URL
-ARG FIREBASE_APPLICATION_CREDENTIALS_RAW
-ARG PYTHON_APP_MODULE=app
 # set environment variables to build args
 ENV ENVIRONMENT ${ENVIRONMENT}
-ENV FIREBASE_DATABASE_URL ${FIREBASE_DATABASE_URL}
-ENV FIREBASE_APPLICATION_CREDENTIALS /run/firebase_credentials.json
 ENV LOCAL_FILE_STORAGE_PATH /var/lib/summation_web_server
 ENV LOCAL_FILE_LOG_PATH /var/log/summation.log
 ENV VECTOR_BIN_PATH /run/.vector/bin/vector
@@ -43,8 +39,6 @@ COPY app.py .
 COPY db.py .
 COPY jwt_verifier.py .
 
-RUN echo ${FIREBASE_APPLICATION_CREDENTIALS_RAW} | base64 -d > firebase_credentials.json
-
 # execute the web app
 #ENV UUID=$(cat /proc/sys/kernel/random/uuid)
-CMD exec gunicorn -k uvicorn.workers.UvicornWorker --log-level warning --bind :$PORT --workers 1 --threads 8 --timeout 0 ${PYTHON_APP_MODULE}:app
+CMD exec gunicorn -k uvicorn.workers.UvicornWorker --log-level warning --bind :$PORT --workers 1 --threads 8 --timeout 0 app:app
