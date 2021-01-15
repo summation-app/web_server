@@ -468,6 +468,7 @@ def connect_to_database(database):
 		for class_variable in automapper.__subclasses__():
 			db_classes[database['organization_id']][database['name']][class_variable.__name__] = class_variable
 	except Exception as e:
+		logger.error(f"could not connect to database_name: {database.get('name')}", {'organization_id': database.get('organization_id')})
 		logger.error(e, exc_info=True)
 
 async def connect_to_all_databases():
@@ -500,7 +501,7 @@ def get_database_session(organization_id, database_name):
 				session.execute(f"SET search_path TO {schema}, public") # only happens for databases with schemas, like PostgreSQL
 			return session, db_session
 		else:
-			logger.error(f"could not get database session for organization_id: {organization_id}, database_name: {database_name}")
+			logger.error(f"could not get database session for organization_id: {organization_id}, database_name: {database_name}", {'organization_id': organization_id})
 			raise Exception
 	except Exception as e:
 		logger.error(e, exc_info=True)

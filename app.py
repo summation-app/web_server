@@ -144,6 +144,23 @@ def request_validator_timer(func):
 			kwargs['organization_id'] = organization_id
 			kwargs['app_id'] = app_id
 			context['organization_id'] = organization_id
+
+			token_info = None
+			token = inputs.get('token')
+			if token:
+				try:
+					token_info = await validate_token(token, organization_id, app_id)
+				except MissingClaimError:
+					return JSONResponse({'error': 'MissingClaimError'}, status_code=403)
+				except InvalidClaimError:
+					return JSONResponse({'error': 'InvalidClaimError'}, status_code=403)
+				except ExpiredTokenError:
+					return JSONResponse({'error': 'ExpiredTokenError'}, status_code=403)
+				except InvalidTokenError:
+					return JSONResponse({'error': 'InvalidTokenError'}, status_code=403)
+				except Exception as e:
+					return JSONResponse({'error': 'token validation error'}, status_code=403)
+			kwargs['token_info'] = token_info
 		value = await func(*args, **kwargs)
 		status_code = None
 		if isinstance(value, JSONResponse):
@@ -803,7 +820,7 @@ async def save_database(request):
 
 @app.route('/api', methods=['GET','POST'])
 @request_validator_timer
-async def api_gateway(request, organization_id, app_id):
+async def api_gateway(request, organization_id, app_id, token_info):
 	"""
 	validate JWT
 	get key from header, and check if development or production
@@ -823,7 +840,6 @@ async def api_gateway(request, organization_id, app_id):
 			data = inputs.get('data')
 			gateway_token = inputs.get('gateway_token')
 
-			token_info = await validate_token(token, organization_id, app_id)
 			role_id = token_info.get('role_id')
 			user_id = token_info.get('uid')
 
@@ -836,6 +852,7 @@ async def api_gateway(request, organization_id, app_id):
 			return JSONResponse(None, status_code=500)
 	except Exception as e:
 		logger.error(e, exc_info=True)
+		return JSONResponse(None, status_code=500)
 
 async def api(scope, organization_id, method, url, data, role_id, parameters, jwt_claims, headers={}):
 	"""
@@ -1219,7 +1236,7 @@ async def proxy_request(method, url, headers, auth, parameters, data):
 
 @app.route('/database', methods=['GET','POST'])
 @request_validator_timer
-async def database_gateway(request, organization_id, app_id):
+async def database_gateway(request, organization_id, app_id, token_info):
 	"""
 	validate JWT
 	get key from header, and check if development or production
@@ -1246,7 +1263,6 @@ async def database_gateway(request, organization_id, app_id):
 			method = inputs.get('method')
 			database_name = inputs.get('database_name')
 
-			token_info = await validate_token(token, organization_id, app_id)
 			role_id = token_info.get('role_id')
 
 			settings = await Settings.get(key='gateway_token', value={'key': gateway_token})
@@ -1299,6 +1315,7 @@ async def database_gateway(request, organization_id, app_id):
 			return JSONResponse(results)
 	except Exception as e:
 		logger.error(e, exc_info=True)
+		return JSONResponse(None, status_code=500)
 
 async def execute_crud_query(method, table, params, organization_id, database_name):
 	try:
@@ -1366,7 +1383,7 @@ async def execute_crud_query(method, table, params, organization_id, database_na
 
 @app.route('/chain', methods=['POST'])
 @request_validator_timer
-async def chain(request):
+async def chain(request, organization_id, app_id, token_info):
 	"""
 	run steps of the chain in series
 	if any step fails, stop there and return
@@ -1381,8 +1398,6 @@ async def chain(request):
 		default_database_name = inputs.get('default_database_name')
 		queue = inputs.get('queue')
 
-		organization_id, app_id = await validate_gateway_token(gateway_token)
-		token_info = await validate_token(token, organization_id, app_id)
 		role_id = token_info.get('role_id')
 
 		settings = await Settings.get(key='gateway_token', value={'key': gateway_token})
@@ -1524,7 +1539,7 @@ async def analytics(request):
 
 @app.route('/ping', methods=['GET'])
 @request_validator_timer
-async def ping(request: Request):
+async def ping(request: Request, organization_id, app_id, token_info):
 	context['duration'] = round(time.perf_counter() - context['start_time'], 3)
 	logger.debug('from ping')
 	return PlainTextResponse("hello")
