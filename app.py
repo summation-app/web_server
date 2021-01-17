@@ -145,9 +145,16 @@ def request_validator_timer(func):
 			kwargs['app_id'] = app_id
 			context['organization_id'] = organization_id
 
+			if auth_results := await Settings.get(organization_id=organization_id, application_id=app_id, key='authentication_method'):
+				auth_method = auth_results.value
+			else:
+				return JSONResponse({'error': 'no authentication setup for organization/application'}, status_code=403)
+
 			token_info = None
 			token = inputs.get('token')
-			if token:
+			if auth_method=='none':
+				pass
+			elif auth_method=='jwt' and token:
 				try:
 					token_info = await validate_token(token, organization_id, app_id)
 				except MissingClaimError:
@@ -158,8 +165,12 @@ def request_validator_timer(func):
 					return JSONResponse({'error': 'ExpiredTokenError'}, status_code=403)
 				except InvalidTokenError:
 					return JSONResponse({'error': 'InvalidTokenError'}, status_code=403)
-				except Exception as e:
+				except Exception:
 					return JSONResponse({'error': 'token validation error'}, status_code=403)
+			elif auth_method=='jwt':
+				return JSONResponse({'error': 'token missing'}, status_code=403)
+			else:
+				return JSONResponse({'error': 'unknown authentication method'}, status_code=403)
 			kwargs['token_info'] = token_info
 		value = await func(*args, **kwargs)
 		status_code = None
@@ -289,7 +300,8 @@ async def auth_method(request):
 		elif request.method=='POST':
 			data = await request.json()
 			values = data.get('values')
-			setting, created = await get_or_create(0, 'summation', Settings, organization_id=organization_id, key='authentication_method')
+			app_id = data.get('app_id')
+			setting, created = await get_or_create(0, 'summation', Settings, organization_id=organization_id, application_id=app_id, key='authentication_method')
 			setting.value = values
 			await setting.save()
 			return JSONResponse(True, status_code=200)
@@ -350,6 +362,85 @@ async def approved_queries_requests(request):
 				logger.error('could not find record to delete')
 				return JSONResponse(False, status_code=500)
 			return JSONResponse(True, status_code=200)
+	except Exception as e:
+		logger.error(e, exc_info=True)
+		return JSONResponse(False, status_code=500)
+
+@app.route('/apps', methods=['GET'])
+@requires('authenticated')
+async def all_databases_apis(request):
+	"""
+	return a list of all databases & APIs
+	"""
+	try:
+		organization_id = request.user.organization_id
+
+		if request.method=='GET':
+			results = defaultdict(list)
+			if databases := await Databases.filter(organization_id=organization_id).all():
+				for db in databases:
+					results['databases'].append(db.name)
+			if apis := await APIs.filter(organization_id=organization_id).all():
+				for api in databases:
+					results['apis'].append(api.url)
+			return JSONResponse(results, status_code=200)
+		return JSONResponse(False, status_code=500)
+	except Exception as e:
+		logger.error(e, exc_info=True)
+		return JSONResponse(False, status_code=500)
+
+@app.route('/apps', methods=['GET','POST','DELETE'])
+@requires('authenticated')
+async def apps(request):
+	"""
+	we use raw SQL as we need to decrypt the credentials
+	"""
+	try:
+		organization_id = request.user.organization_id
+
+		if request.method=='GET':
+			sql = """SELECT t1.name, t1.enabled, t2.value->>'key' AS gateway_token_development, t3.value->>'key' AS gateway_token_production, t4.value AS auth_method, t5.value AS enabled_databases FROM applications t1 LEFT JOIN settings t2 ON (t1.organization_id=t2.organization_id AND t1.id=t2.application_id AND t2.key='gateway_token') LEFT JOIN settings t3 ON (t1.organization_id=t3.organization_id AND t1.id=t3.application_id AND t3.key='gateway_token') LEFT JOIN settings t4 ON (t1.organization_id=t4.organization_id AND t1.id=t4.application_id AND t4.key='authentication_method') 
+LEFT JOIN settings t5 ON (t1.organization_id=t5.organization_id AND t1.id=t5.application_id AND t5.key='enabled_databases_apis')
+WHERE t1.organization_id=17 AND t2.value->>'scope'='development'
+AND t3.value->>'scope'='production'"""
+			if results := await query(0, 'summation', sql, {'organization_id': organization_id}):
+				return JSONResponse(results, status_code=200)
+			else:
+				return JSONResponse(False, status_code=500)
+		elif request.method=='POST': # to edit a row, or to enable/disable rows
+			data = await request.json()
+			id = data.get('id')
+			enabled = data.get('enabled')
+			update_record = data.get('update_record')
+			if update_record: # editing a row
+				record = await Applications.get(id=id, organization_id=organization_id)
+				if record:
+					record.name = data.get('name')
+					enabled_databases = data.get('enabled_databases')
+					enabled_apis = data.get('enabled_apis')
+					settings_record = get_or_create(0, 'summation', Settings, organization_id=organization_id, application_id=id, key='enabled_databases', value=enabled_databases)
+					settings_record = get_or_create(0, 'summation', Settings, organization_id=organization_id, application_id=id, key='enabled_apis', value=enabled_apis)
+					return JSONResponse(True, status_code=200)
+				else:
+					logger.error('could not find record to enable/disable')
+					return JSONResponse(False, status_code=500)
+			else:
+				record = await Applications.get(id=id, organization_id=organization_id)
+				if record:
+					record.enabled = enabled
+					await record.save()
+				else:
+					logger.error('could not find record to enable/disable')
+					return JSONResponse(False, status_code=500)
+				return JSONResponse(True, status_code=200)
+		elif request.method=='DELETE':
+			data = await request.json()
+			if id := data.get('id'):
+				if record := await Applications.get(id=id, organization_id=organization_id):
+					await record.delete()
+					return JSONResponse(True, status_code=200)
+			logger.error('could not find record to delete')
+			return JSONResponse({'status': False, 'error': 'could not find record to delete'})
 	except Exception as e:
 		logger.error(e, exc_info=True)
 		return JSONResponse(False, status_code=500)
@@ -580,7 +671,7 @@ async def generate_gateway_tokens_for_new_app(request):
 
 		app, created = await get_or_create(0, 'summation', Applications, organization_id=organization_id, name=name)
 		tokens = await generate_gateway_tokens(organization_id, force=True, app_id=app.id)
-		return JSONResponse({'dev_key': tokens['development'], 'prod_key': tokens['production']})
+		return JSONResponse({'dev_key': tokens['development'], 'prod_key': tokens['production'], 'app_id': app.id})
 	except Exception as e:
 		logger.error(e, exc_info=True)
 

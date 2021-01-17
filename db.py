@@ -223,6 +223,7 @@ class Applications(Base, Mixins):
 	organization_id = Column(Integer, nullable=True)
 	authentication = Column(JSONB, nullable=True)
 	name = Column(String, nullable=True)
+	enabled = Column(Boolean, nullable=True)
 
 class AccessControls(Base, Mixins):
 	__tablename__ = 'access_controls'
