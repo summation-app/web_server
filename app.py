@@ -366,7 +366,7 @@ async def approved_queries_requests(request):
 		logger.error(e, exc_info=True)
 		return JSONResponse(False, status_code=500)
 
-@app.route('/apps', methods=['GET'])
+@app.route('/all_databases_apis', methods=['GET'])
 @requires('authenticated')
 async def all_databases_apis(request):
 	"""
@@ -381,13 +381,30 @@ async def all_databases_apis(request):
 				for db in databases:
 					results['databases'].append(db.name)
 			if apis := await APIs.filter(organization_id=organization_id).all():
-				for api in databases:
+				for api in apis:
 					results['apis'].append(api.url)
 			return JSONResponse(results, status_code=200)
 		return JSONResponse(False, status_code=500)
 	except Exception as e:
 		logger.error(e, exc_info=True)
 		return JSONResponse(False, status_code=500)
+
+async def check_app_enabled_for_data_source(organization_id, app_id, data_source_type, data_source_name):
+	"""
+	TODO: lrucache
+	checks if app is enabled, and if the data source is listed in the 'enabled_databases' or 'enabled_apis' settings
+	"""
+	try:
+		sql = """SELECT t1.id FROM applications t1 
+		INNER JOIN settings t2 ON (t1.organization_id=t2.organization_id AND t1.id=t2.application_id) 
+		WHERE t1.organization_id=:organization_id AND t1.id=:application_id AND t1.enabled=TRUE AND t2.key=:key AND t2.value ? :data_source_name"""
+		key = f"enabled_{data_source_type}s"
+		if results := await query(0, 'summation', sql, {'organization_id': organization_id, 'application_id': app_id, 'key': key, 'data_source_name': data_source_name}):
+			return True
+		logger.warning(f"app not enabled for data source")
+		return False
+	except Exception as e:
+		logger.error(e, exc_info=True)
 
 @app.route('/apps', methods=['GET','POST','DELETE'])
 @requires('authenticated')
@@ -401,7 +418,7 @@ async def apps(request):
 		if request.method=='GET':
 			sql = """SELECT t1.name, t1.enabled, t2.value->>'key' AS gateway_token_development, t3.value->>'key' AS gateway_token_production, t4.value AS auth_method, t5.value AS enabled_databases FROM applications t1 LEFT JOIN settings t2 ON (t1.organization_id=t2.organization_id AND t1.id=t2.application_id AND t2.key='gateway_token') LEFT JOIN settings t3 ON (t1.organization_id=t3.organization_id AND t1.id=t3.application_id AND t3.key='gateway_token') LEFT JOIN settings t4 ON (t1.organization_id=t4.organization_id AND t1.id=t4.application_id AND t4.key='authentication_method') 
 LEFT JOIN settings t5 ON (t1.organization_id=t5.organization_id AND t1.id=t5.application_id AND t5.key='enabled_databases_apis')
-WHERE t1.organization_id=17 AND t2.value->>'scope'='development'
+WHERE t1.organization_id=:organization_id AND t2.value->>'scope'='development'
 AND t3.value->>'scope'='production'"""
 			if results := await query(0, 'summation', sql, {'organization_id': organization_id}):
 				return JSONResponse(results, status_code=200)
@@ -418,8 +435,8 @@ AND t3.value->>'scope'='production'"""
 					record.name = data.get('name')
 					enabled_databases = data.get('enabled_databases')
 					enabled_apis = data.get('enabled_apis')
-					settings_record = get_or_create(0, 'summation', Settings, organization_id=organization_id, application_id=id, key='enabled_databases', value=enabled_databases)
-					settings_record = get_or_create(0, 'summation', Settings, organization_id=organization_id, application_id=id, key='enabled_apis', value=enabled_apis)
+					settings_record, created = get_or_create(0, 'summation', Settings, organization_id=organization_id, application_id=id, key='enabled_databases', value=enabled_databases)
+					settings_record, created = get_or_create(0, 'summation', Settings, organization_id=organization_id, application_id=id, key='enabled_apis', value=enabled_apis)
 					return JSONResponse(True, status_code=200)
 				else:
 					logger.error('could not find record to enable/disable')
@@ -671,7 +688,58 @@ async def generate_gateway_tokens_for_new_app(request):
 
 		app, created = await get_or_create(0, 'summation', Applications, organization_id=organization_id, name=name)
 		tokens = await generate_gateway_tokens(organization_id, force=True, app_id=app.id)
+		# save all existing data sources as approved for this app
+		enable_all_data_sources_for_app = data.get('enable_all_data_sources_for_app')
+		if enable_all_data_sources_for_app:
+			await enable_all_existing_data_sources_for_app(organization_id, app.id)
 		return JSONResponse({'dev_key': tokens['development'], 'prod_key': tokens['production'], 'app_id': app.id})
+	except Exception as e:
+		logger.error(e, exc_info=True)
+
+async def enable_all_existing_data_sources_for_app(organization_id, app_id):
+	"""
+	"""
+	try:
+		results = defaultdict(list)
+		if databases := await Databases.filter(organization_id=organization_id).all():
+			for db in databases:
+				results['databases'].append(db.name)
+		if apis := await APIs.filter(organization_id=organization_id).all():
+			for api in apis:
+				results['apis'].append(api.url)
+		settings_record, created = get_or_create(0, 'summation', Settings, organization_id=organization_id, application_id=app_id, key='enabled_databases')
+		if settings_record:
+			settings_record.value=results['databases']
+			await settings_record.save()
+		settings_record, created = get_or_create(0, 'summation', Settings, organization_id=organization_id, application_id=app_id, key='enabled_apis')
+		if settings_record:
+			settings_record.value=results['apis']
+			await settings_record.save()
+		return True
+	except Exception as e:
+		logger.error(e, exc_info=True)
+
+async def enable_data_source_for_all_existing_apps(organization_id, data_source_type, name):
+	"""
+	"""
+	try:
+		results = defaultdict(list)
+		if databases := await Databases.filter(organization_id=organization_id).all():
+			for db in databases:
+				results['databases'].append(db.name)
+		if apis := await APIs.filter(organization_id=organization_id).all():
+			for api in apis:
+				results['apis'].append(api.url)
+		key = "enabled_{data_source_type}s"
+		if apps := await Settings.filter(organization_id=organization_id, key=key).all():
+			for app in apps:
+				if app.value:
+					app.value = app.value.append(name)
+					await app.save()
+				else:
+					app.value = [name]
+					await app.save()
+		return True
 	except Exception as e:
 		logger.error(e, exc_info=True)
 
@@ -760,6 +828,7 @@ async def save_api(request):
 		authentication = data.get('authentication')
 		bearer_token = data.get('bearer_token')
 		basic_auth = data.get('basic_auth')
+		enable_data_source_for_all_existing_apps = data.get('enable_data_source_for_all_existing_apps')
 
 		organization_id = request.user.organization_id
 
@@ -796,6 +865,9 @@ async def save_api(request):
 				'development_key': development_key,
 				'authentication': json.dumps(authentication)})
 			logger.debug(result)
+
+			if enable_data_source_for_all_existing_apps:
+				await enable_data_source_for_all_existing_apps(organization_id, 'api', url)
 		elif request.method=='PATCH' and id:
 			if record := await APIs.get(id=id, organization_id=organization_id):
 				sql = "UPDATE \"APIs\" SET method=:method, url=:url, headers=:headers, authentication=:authentication, production_key=PGP_SYM_ENCRYPT(:production_key, :admin_password)\:\:text, development_key=PGP_SYM_ENCRYPT(:development_key, :admin_password)\:\:text WHERE organization_id=:organization_id AND id=:id"
@@ -847,6 +919,7 @@ async def save_database(request):
 		database_name = data.get('database_name')
 		schema = data.get('schema')
 		name = data.get('name')
+		enable_data_source_for_all_existing_apps = data.get('enable_data_source_for_all_existing_apps')
 
 		organization_id = request.user.organization_id
 
@@ -867,6 +940,9 @@ async def save_database(request):
 			result = await query(0, 'summation', sql, database_record)
 			logger.debug(result)
 			database_record['id'] = result
+
+			if enable_data_source_for_all_existing_apps:
+				await enable_data_source_for_all_existing_apps(organization_id, 'database', name)
 		elif request.method=='PATCH' and id:
 			if record := await Databases.get(id=id, organization_id=organization_id):
 				sql = "UPDATE databases SET password=PGP_SYM_ENCRYPT(:password, :admin_password)\:\:text, engine=:engine, url=:url, port=:port, username=:username, database_name=:database_name, schema=:schema, name=:name WHERE organization_id=:organization_id AND id=:id"
@@ -936,7 +1012,7 @@ async def api_gateway(request, organization_id, app_id, token_info):
 
 			if settings := await Settings.get(organization_id=organization_id, key='gateway_token', value={'key': gateway_token}):
 				scope = settings.value.get('scope')
-				result, status = await api(scope, organization_id, method, url, data, role_id, parameters, token_info)
+				result, status = await api(scope, organization_id, method, url, data, role_id, parameters, token_info, app_id)
 				return JSONResponse(result, status_code=status)
 			else:
 				logger.debug('no token info')
@@ -945,7 +1021,7 @@ async def api_gateway(request, organization_id, app_id, token_info):
 		logger.error(e, exc_info=True)
 		return JSONResponse(None, status_code=500)
 
-async def api(scope, organization_id, method, url, data, role_id, parameters, jwt_claims, headers={}):
+async def api(scope, organization_id, method, url, data, role_id, parameters, jwt_claims, app_id, headers={}):
 	"""
 	"""
 	try:
@@ -953,6 +1029,8 @@ async def api(scope, organization_id, method, url, data, role_id, parameters, jw
 			sql = "SELECT t1.*, PGP_SYM_DECRYPT(t2.production_key\:\:bytea, :admin_key) AS production_key, t2.authentication, t2.body, t2.headers, t2.url FROM summation.requests t1 INNER JOIN \"APIs\" t2 ON (t1.api_id=t2.id) WHERE t2.organization_id=:organization_id AND t1.method=:method AND t1.url=:url AND t2.role_id=:role_id"
 			if request_results := await query(0, 'summation', sql, {'organization_id': organization_id, 'admin_key': ADMIN_PASSWORD, 'method': method, 'url': url, 'role_id': role_id}):
 				request = request_results[0]
+				if not check_app_enabled_for_data_source(organization_id, app_id, 'api', request['url']):
+					return None, 403
 				auth = None
 				request_url, headers, parameters, auth = prepare_authentication(request['authentication'], scope, request['production_key'], None, request['url'], headers, data, parameters)
 				parameters, headers = await bind_params(organization_id, 'summation', parameters, scope, jwt_claims, headers=headers)
@@ -961,6 +1039,7 @@ async def api(scope, organization_id, method, url, data, role_id, parameters, jw
 				return result
 			else:
 				logger.error('not authorized')
+				return None, 403
 		elif scope=='development':
 			# we can't extract authentication information directly from an API call,
 			# as we don't know if it's in the header, body, what keys, etc.
@@ -971,6 +1050,8 @@ async def api(scope, organization_id, method, url, data, role_id, parameters, jw
 			# overkill to use https://github.com/john-kurkowski/tldextract, as we only need the prefix before any third '/'
 			regex_results = re.findall(url_regex, url)
 			if regex_results:
+				if not check_app_enabled_for_data_source(organization_id, app_id, 'api', regex_results[0]):
+					return None, 403
 				url_prefix = regex_results[0] + '%'
 				logger.debug(url_prefix)
 				logger.debug(f'organization_id: {organization_id}')
@@ -1354,6 +1435,9 @@ async def database_gateway(request, organization_id, app_id, token_info):
 			method = inputs.get('method')
 			database_name = inputs.get('database_name')
 
+			if not check_app_enabled_for_data_source(organization_id, app_id, 'database', database_name):
+				return None, 403
+
 			role_id = token_info.get('role_id')
 
 			settings = await Settings.get(key='gateway_token', value={'key': gateway_token})
@@ -1520,7 +1604,7 @@ async def chain(request, organization_id, app_id, token_info):
 					# API methods
 					url = step['url']
 					data = step.get('data')
-					results, status = await api(scope, organization_id, step['method'], url, data, role_id, params, token_info, headers)
+					results, status = await api(scope, organization_id, step['method'], url, data, role_id, params, token_info, app_id, headers)
 				else:
 					logger.error('unknown method in chain')
 				all_results[f"_{index}"] = results # starts at index 0
