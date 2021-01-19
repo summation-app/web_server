@@ -377,10 +377,10 @@ async def all_databases_apis(request):
 
 		if request.method=='GET':
 			results = defaultdict(list)
-			if databases := await Databases.filter(organization_id=organization_id).all():
+			if databases := await Databases.filter(organization_id=organization_id):
 				for db in databases:
 					results['databases'].append(db.name)
-			if apis := await APIs.filter(organization_id=organization_id).all():
+			if apis := await APIs.filter(organization_id=organization_id):
 				for api in apis:
 					results['apis'].append(api.url)
 			return JSONResponse(results, status_code=200)
@@ -701,10 +701,10 @@ async def enable_all_existing_data_sources_for_app(organization_id, app_id):
 	"""
 	try:
 		results = defaultdict(list)
-		if databases := await Databases.filter(organization_id=organization_id).all():
+		if databases := await Databases.filter(organization_id=organization_id):
 			for db in databases:
 				results['databases'].append(db.name)
-		if apis := await APIs.filter(organization_id=organization_id).all():
+		if apis := await APIs.filter(organization_id=organization_id):
 			for api in apis:
 				results['apis'].append(api.url)
 		settings_record, created = get_or_create(0, 'summation', Settings, organization_id=organization_id, application_id=app_id, key='enabled_databases')
@@ -724,14 +724,14 @@ async def enable_data_source_for_all_existing_apps(organization_id, data_source_
 	"""
 	try:
 		results = defaultdict(list)
-		if databases := await Databases.filter(organization_id=organization_id).all():
+		if databases := await Databases.filter(organization_id=organization_id):
 			for db in databases:
 				results['databases'].append(db.name)
-		if apis := await APIs.filter(organization_id=organization_id).all():
+		if apis := await APIs.filter(organization_id=organization_id):
 			for api in apis:
 				results['apis'].append(api.url)
 		key = "enabled_{data_source_type}s"
-		if apps := await Settings.filter(organization_id=organization_id, key=key).all():
+		if apps := await Settings.filter(organization_id=organization_id, key=key):
 			for app in apps:
 				if app.value:
 					app.value = app.value.append(name)
@@ -1678,7 +1678,7 @@ async def get_settings(organization_id, keys=[]):
 	"""
 	"""
 	try:
-		settings = await Settings.filter(organization_id=organization_id, key__in=keys).all()
+		settings = await Settings.filter(organization_id=organization_id, key__in=keys)
 		return settings
 	except Exception as e:
 		logger.error(e, exc_info=True)
