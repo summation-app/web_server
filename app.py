@@ -1144,48 +1144,46 @@ async def validate_token(token, organization_id, app_id):
 	open source version uses the built-in Authlib-issued JWT, uses organization_id=0
 	cloud version uses JWT tokens issued by Firebase/Auth0, etc., uses organization_id>0
 	TODO: cache this
+	no try/except, as the functions that call this capture exceptions
 	"""
-	try:
-		logger.debug(f"validating token: {token}")
-		unverified_claims = jwt.decode(token, verify=False, algorithms=["HS256","RS256"]) # decode claims without validating
-		if unverified_claims['iss']=='summation':
-			claims = authlib_jwt.decode(token, open(os.path.join(LOCAL_FILE_STORAGE_PATH, 'public_key.pem'),'rb').read())
-			claims.validate()
-			# role_record = await Roles.get(name=role, enabled=True, organization_id=claims.get('organization_id'))
-			# TODO: verify role exists in database for that org_id/app_id
-		elif ENVIRONMENT=='cloud':
-			# token for cloud version of summation issued by firebase
-			claims = JWTVerifier.create('firebase', token=token).verify_token()
-		else: # a token generated for app users, by the app itself
-			# the gateway_token tells us which organization_id/app_id this is for
-			if method := await Settings.get(key='authentication_method', application_id=app_id):
-				if method.value.get('selected_auth_method')=='jwt':
-					if vendor := method.value.get('selected_jwt_method'):
-						# validate with app's choice of Firebase, Cognito, Okta, Auth0, etc. from settings
-						parameters = method.value.get('jwt_parameters')
-						claims = JWTVerifier.create(vendor, token=token, **parameters).verify_token()
-						# if token doesn't contain a 'role', set the role to 'users' by default
-						role_search_path = method.value.get('role_search_path')
-						if claims.get('role'):
-							pass
-						elif not claims.get('role') and not role_search_path:
-							claims['role'] = 'users'
-						elif role_search_path:
-							try:
-								role = eval(role_search_path)
-								claims['role'] = role
-							except:
-								logger.error(f"could not evaluate role_search_path on token: {token}")
-						# if the role doesn't exist, create a record in the database for it
-						row, created = await get_or_create(0, 'summation', Roles, organization_id=organization_id, name=claims['role'], application_id=app_id, enabled=True)
-						claims['role_id'] = row.id
-				else:
-					logger.error("unsupported auth method")
+	logger.debug(f"validating token: {token}")
+	unverified_claims = jwt.decode(token, verify=False, algorithms=["HS256","RS256"]) # decode claims without validating
+	if unverified_claims['iss']=='summation':
+		claims = authlib_jwt.decode(token, open(os.path.join(LOCAL_FILE_STORAGE_PATH, 'public_key.pem'),'rb').read())
+		claims.validate()
+		# role_record = await Roles.get(name=role, enabled=True, organization_id=claims.get('organization_id'))
+		# TODO: verify role exists in database for that org_id/app_id
+	elif ENVIRONMENT=='cloud':
+		# token for cloud version of summation issued by firebase
+		claims = JWTVerifier.create('firebase', token=token).verify_token()
+	else: # a token generated for app users, by the app itself
+		# the gateway_token tells us which organization_id/app_id this is for
+		if method := await Settings.get(key='authentication_method', application_id=app_id):
+			if method.value.get('selected_auth_method')=='jwt':
+				if vendor := method.value.get('selected_jwt_method'):
+					# validate with app's choice of Firebase, Cognito, Okta, Auth0, etc. from settings
+					parameters = method.value.get('jwt_parameters')
+					claims = JWTVerifier.create(vendor, token=token, **parameters).verify_token()
+					# if token doesn't contain a 'role', set the role to 'users' by default
+					role_search_path = method.value.get('role_search_path')
+					if claims.get('role'):
+						pass
+					elif not claims.get('role') and not role_search_path:
+						claims['role'] = 'users'
+					elif role_search_path:
+						try:
+							role = eval(role_search_path)
+							claims['role'] = role
+						except:
+							logger.error(f"could not evaluate role_search_path on token: {token}")
+					# if the role doesn't exist, create a record in the database for it
+					row, created = await get_or_create(0, 'summation', Roles, organization_id=organization_id, name=claims['role'], application_id=app_id, enabled=True)
+					claims['role_id'] = row.id
 			else:
-				logger.error(f"no authentication_method established for app_id: {app_id}")
-		return claims
-	except Exception as e:
-		logger.error(e, exc_info=True)
+				logger.error("unsupported auth method")
+		else:
+			logger.error(f"no authentication_method established for app_id: {app_id}")
+	return claims
 
 async def validate_gateway_token(token):
 	"""
