@@ -141,7 +141,14 @@ def request_validator_timer(func):
 		if request.method=='POST':
 			inputs = await request.json()
 			gateway_token = inputs.get('gateway_token')
-			organization_id, app_id = await validate_gateway_token(gateway_token)
+			if not gateway_token:
+				logger.error('gateway_token missing')
+				return JSONResponse({'error': 'missing gateway_token'}, status_code=403)
+			try:
+				organization_id, app_id = await validate_gateway_token(gateway_token)
+			except Exception as e:
+				logger.error(e, exc_info=True)
+				return JSONResponse({'error': 'invalid gateway_token'}, status_code=403)
 			kwargs['organization_id'] = organization_id
 			kwargs['app_id'] = app_id
 			context['organization_id'] = organization_id
