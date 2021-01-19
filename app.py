@@ -434,6 +434,7 @@ AND t3.value->>'scope'='production'"""
 				record = await Applications.get(id=id, organization_id=organization_id)
 				if record:
 					record.name = data.get('name')
+					await record.save()
 					enabled_databases = data.get('enabled_databases')
 					enabled_apis = data.get('enabled_apis')
 					settings_record, created = await get_or_create(0, 'summation', Settings, organization_id=organization_id, application_id=id, key='enabled_databases', value=enabled_databases)
