@@ -725,8 +725,7 @@ async def enable_data_source_for_all_existing_apps(organization_id, data_source_
 	"""
 	"""
 	try:
-		results = defaultdict(list)
-		key = "enabled_{data_source_type}s"
+		key = f"enabled_{data_source_type}s"
 		if apps := await Applications.filter(organization_id=organization_id): # may consider only doing for enabled apps
 			for app in apps:
 				setting, created = await get_or_create(0, 'summation', Settings, organization_id=organization_id, application_id=app.id, key=key)
