@@ -1029,7 +1029,7 @@ async def api(scope, organization_id, method, url, data, role_id, parameters, jw
 			sql = "SELECT t1.*, PGP_SYM_DECRYPT(t2.production_key\:\:bytea, :admin_key) AS production_key, t2.authentication, t2.body, t2.headers, t2.url FROM summation.requests t1 INNER JOIN \"APIs\" t2 ON (t1.api_id=t2.id) WHERE t2.organization_id=:organization_id AND t1.method=:method AND t1.url=:url AND t2.role_id=:role_id"
 			if request_results := await query(0, 'summation', sql, {'organization_id': organization_id, 'admin_key': ADMIN_PASSWORD, 'method': method, 'url': url, 'role_id': role_id}):
 				request = request_results[0]
-				if not check_app_enabled_for_data_source(organization_id, app_id, 'api', request['url']):
+				if not await check_app_enabled_for_data_source(organization_id, app_id, 'api', request['url']):
 					return None, 403
 				auth = None
 				request_url, headers, parameters, auth = prepare_authentication(request['authentication'], scope, request['production_key'], None, request['url'], headers, data, parameters)
@@ -1050,7 +1050,7 @@ async def api(scope, organization_id, method, url, data, role_id, parameters, jw
 			# overkill to use https://github.com/john-kurkowski/tldextract, as we only need the prefix before any third '/'
 			regex_results = re.findall(url_regex, url)
 			if regex_results:
-				if not check_app_enabled_for_data_source(organization_id, app_id, 'api', regex_results[0]):
+				if not await check_app_enabled_for_data_source(organization_id, app_id, 'api', regex_results[0]):
 					return None, 403
 				url_prefix = regex_results[0] + '%'
 				logger.debug(url_prefix)
@@ -1427,7 +1427,7 @@ async def database_gateway(request, organization_id, app_id, token_info):
 			method = inputs.get('method')
 			database_name = inputs.get('database_name')
 
-			if not check_app_enabled_for_data_source(organization_id, app_id, 'database', database_name):
+			if not await check_app_enabled_for_data_source(organization_id, app_id, 'database', database_name):
 				return None, 403
 
 			role_id = token_info.get('role_id')
