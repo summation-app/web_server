@@ -684,7 +684,7 @@ async def generate_gateway_tokens_for_new_app(request):
 	try:
 		data = await request.json()
 		organization_id = request.user.organization_id
-		name = data.get('name')
+		name = data.get('app_name')
 
 		app, created = await get_or_create(0, 'summation', Applications, organization_id=organization_id, name=name)
 		tokens = await generate_gateway_tokens(organization_id, force=True, app_id=app.id)
