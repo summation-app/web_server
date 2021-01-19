@@ -401,6 +401,7 @@ async def check_app_enabled_for_data_source(organization_id, app_id, data_source
 		WHERE t1.organization_id=:organization_id AND t1.id=:application_id AND t1.enabled=TRUE AND t2.key=:key AND t2.value ? :data_source_name"""
 		key = f"enabled_{data_source_type}s"
 		if results := await query(0, 'summation', sql, {'organization_id': organization_id, 'application_id': app_id, 'key': key, 'data_source_name': data_source_name}):
+			logger.debug('results in check_app_enabled:' + str(results))
 			return True
 		logger.warning(f"app not enabled for data source")
 		return False
@@ -1409,22 +1410,14 @@ async def proxy_request(method, url, headers, auth, parameters, data):
 @request_validator_timer
 async def database_gateway(request, organization_id, app_id, token_info):
 	"""
-	validate JWT
-	get key from header, and check if development or production
-	check if API/query is whitelisted
-	for APIs, get the URL & credentials
+	get gateway token, and check if development or production
+	check if query is whitelisted
 	return the result to client
 
 	https://security.openstack.org/guidelines/dg_parameterize-database-queries.html
 	"""
 	try:
 		if request.method=='POST':
-			# to allow the webapp to use summation itself:
-			# docker runs a shell command which:
-			# creates random env variable
-			# runs python & web app
-			# or have 2 services, one that listens just on localhost, another for public
-
 			inputs = await request.json()
 			token = inputs.get('token')
 			gateway_token = inputs.get('gateway_token')
