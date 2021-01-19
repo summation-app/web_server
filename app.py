@@ -401,7 +401,6 @@ async def check_app_enabled_for_data_source(organization_id, app_id, data_source
 		WHERE t1.organization_id=:organization_id AND t1.id=:application_id AND t1.enabled=TRUE AND t2.key=:key AND t2.value ? :data_source_name"""
 		key = f"enabled_{data_source_type}s"
 		if results := await query(0, 'summation', sql, {'organization_id': organization_id, 'application_id': app_id, 'key': key, 'data_source_name': data_source_name}):
-			logger.debug('results in check_app_enabled:' + str(results))
 			return True
 		logger.warning(f"app not enabled for data source")
 		return False
@@ -1030,7 +1029,7 @@ async def api(scope, organization_id, method, url, data, role_id, parameters, jw
 			if request_results := await query(0, 'summation', sql, {'organization_id': organization_id, 'admin_key': ADMIN_PASSWORD, 'method': method, 'url': url, 'role_id': role_id}):
 				request = request_results[0]
 				if not await check_app_enabled_for_data_source(organization_id, app_id, 'api', request['url']):
-					return None, 403
+					return {'error': 'this app is not enabled for this API - please do so in the settings->apps tab'}, 403
 				auth = None
 				request_url, headers, parameters, auth = prepare_authentication(request['authentication'], scope, request['production_key'], None, request['url'], headers, data, parameters)
 				parameters, headers = await bind_params(organization_id, 'summation', parameters, scope, jwt_claims, headers=headers)
@@ -1051,7 +1050,7 @@ async def api(scope, organization_id, method, url, data, role_id, parameters, jw
 			regex_results = re.findall(url_regex, url)
 			if regex_results:
 				if not await check_app_enabled_for_data_source(organization_id, app_id, 'api', regex_results[0]):
-					return None, 403
+					return {'error': 'this app is not enabled for this API - please do so in the settings->apps tab'}, 403
 				url_prefix = regex_results[0] + '%'
 				logger.debug(url_prefix)
 				logger.debug(f'organization_id: {organization_id}')
@@ -1428,7 +1427,7 @@ async def database_gateway(request, organization_id, app_id, token_info):
 			database_name = inputs.get('database_name')
 
 			if not await check_app_enabled_for_data_source(organization_id, app_id, 'database', database_name):
-				return None, 403
+				return JSONResponse({'error': 'this app is not enabled for this database - please do so in the settings->apps tab'}, status_code=403)
 
 			role_id = token_info.get('role_id')
 
