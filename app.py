@@ -726,21 +726,16 @@ async def enable_data_source_for_all_existing_apps(organization_id, data_source_
 	"""
 	try:
 		results = defaultdict(list)
-		if databases := await Databases.filter(organization_id=organization_id):
-			for db in databases:
-				results['databases'].append(db.name)
-		if apis := await APIs.filter(organization_id=organization_id):
-			for api in apis:
-				results['apis'].append(api.url)
 		key = "enabled_{data_source_type}s"
-		if apps := await Settings.filter(organization_id=organization_id, key=key):
+		if apps := await Applications.filter(organization_id=organization_id): # may consider only doing for enabled apps
 			for app in apps:
-				if app.value:
-					app.value = app.value.append(name)
-					await app.save()
+				setting, created = await get_or_create(0, 'summation', Settings, organization_id=organization_id, application_id=app.id, key=key)
+				if setting.value and isinstance(setting.value, list):
+					setting.value.append(name)
+					await setting.save()
 				else:
-					app.value = [name]
-					await app.save()
+					setting.value = [name]
+					await setting.save()		
 		return True
 	except Exception as e:
 		logger.error(e, exc_info=True)
