@@ -61,14 +61,6 @@ class JWTVerifier():
 			if self.audience:
 				assert self.audience==claims.get('audience')
 			return claims
-		except (
-			MissingClaimError,
-			InvalidClaimError,
-			ExpiredTokenError,
-			InvalidTokenError,
-			AssertionError
-		) as e:
-			logger.error(e, exc_info=True)
 
 @dataclass
 class Firebase(JWTVerifier):
