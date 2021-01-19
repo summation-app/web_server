@@ -441,9 +441,13 @@ AND t3.value->>'scope'='production'"""
 					record.name = data.get('name')
 					await record.save()
 					if enabled_databases := data.get('enabled_databases'):
-						settings_record, created = await get_or_create(0, 'summation', Settings, organization_id=organization_id, application_id=id, key='enabled_databases', value=enabled_databases)
+						settings_record, created = await get_or_create(0, 'summation', Settings, organization_id=organization_id, application_id=id, key='enabled_databases')
+						settings_record.value=enabled_databases
+						await settings_record.save()
 					if enabled_apis := data.get('enabled_apis'):
-						settings_record, created = await get_or_create(0, 'summation', Settings, organization_id=organization_id, application_id=id, key='enabled_apis', value=enabled_apis)
+						settings_record, created = await get_or_create(0, 'summation', Settings, organization_id=organization_id, application_id=id, key='enabled_apis')
+						settings_record.value=enabled_apis
+						await settings_record.save()
 					return JSONResponse(True, status_code=200)
 				else:
 					logger.error('could not find record to enable/disable')
