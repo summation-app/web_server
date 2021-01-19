@@ -54,13 +54,12 @@ class JWTVerifier():
 		return claims
 
 	def verify_token(self, claims=None):
-		try:
-			if not claims:
-				claims = self.get_token_claims()
-			claims.validate()
-			if self.audience:
-				assert self.audience==claims.get('audience')
-			return claims
+		if not claims:
+			claims = self.get_token_claims()
+		claims.validate()
+		if self.audience:
+			assert self.audience==claims.get('audience')
+		return claims
 
 @dataclass
 class Firebase(JWTVerifier):
