@@ -830,7 +830,7 @@ async def save_api(request):
 		authentication = data.get('authentication')
 		bearer_token = data.get('bearer_token')
 		basic_auth = data.get('basic_auth')
-		enable_data_source_for_all_existing_apps = data.get('enable_data_source_for_all_existing_apps')
+		enable_data_source = data.get('enable_data_source_for_all_existing_apps')
 
 		organization_id = request.user.organization_id
 
@@ -868,7 +868,7 @@ async def save_api(request):
 				'authentication': json.dumps(authentication)})
 			logger.debug(result)
 
-			if enable_data_source_for_all_existing_apps:
+			if enable_data_source:
 				await enable_data_source_for_all_existing_apps(organization_id, 'api', url)
 		elif request.method=='PATCH' and id:
 			if record := await APIs.get(id=id, organization_id=organization_id):
@@ -921,7 +921,7 @@ async def save_database(request):
 		database_name = data.get('database_name')
 		schema = data.get('schema')
 		name = data.get('name')
-		enable_data_source_for_all_existing_apps = data.get('enable_data_source_for_all_existing_apps')
+		enable_data_source = data.get('enable_data_source_for_all_existing_apps')
 
 		organization_id = request.user.organization_id
 
@@ -943,7 +943,7 @@ async def save_database(request):
 			logger.debug(result)
 			database_record['id'] = result
 
-			if enable_data_source_for_all_existing_apps:
+			if enable_data_source:
 				await enable_data_source_for_all_existing_apps(organization_id, 'database', name)
 		elif request.method=='PATCH' and id:
 			if record := await Databases.get(id=id, organization_id=organization_id):
