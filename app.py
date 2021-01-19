@@ -688,7 +688,7 @@ async def generate_gateway_tokens_for_new_app(request):
 		organization_id = request.user.organization_id
 		name = data.get('app_name')
 
-		app, created = await get_or_create(0, 'summation', Applications, organization_id=organization_id, name=name)
+		app, created = await get_or_create(0, 'summation', Applications, organization_id=organization_id, name=name, enabled=True)
 		tokens = await generate_gateway_tokens(organization_id, force=True, app_id=app.id)
 		# save all existing data sources as approved for this app
 		enable_all_data_sources_for_app = data.get('enable_all_data_sources_for_app')
