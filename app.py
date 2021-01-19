@@ -436,8 +436,8 @@ AND t3.value->>'scope'='production'"""
 					record.name = data.get('name')
 					enabled_databases = data.get('enabled_databases')
 					enabled_apis = data.get('enabled_apis')
-					settings_record, created = get_or_create(0, 'summation', Settings, organization_id=organization_id, application_id=id, key='enabled_databases', value=enabled_databases)
-					settings_record, created = get_or_create(0, 'summation', Settings, organization_id=organization_id, application_id=id, key='enabled_apis', value=enabled_apis)
+					settings_record, created = await get_or_create(0, 'summation', Settings, organization_id=organization_id, application_id=id, key='enabled_databases', value=enabled_databases)
+					settings_record, created = await get_or_create(0, 'summation', Settings, organization_id=organization_id, application_id=id, key='enabled_apis', value=enabled_apis)
 					return JSONResponse(True, status_code=200)
 				else:
 					logger.error('could not find record to enable/disable')
@@ -708,11 +708,11 @@ async def enable_all_existing_data_sources_for_app(organization_id, app_id):
 		if apis := await APIs.filter(organization_id=organization_id):
 			for api in apis:
 				results['apis'].append(api.url)
-		settings_record, created = get_or_create(0, 'summation', Settings, organization_id=organization_id, application_id=app_id, key='enabled_databases')
+		settings_record, created = await get_or_create(0, 'summation', Settings, organization_id=organization_id, application_id=app_id, key='enabled_databases')
 		if settings_record:
 			settings_record.value=results['databases']
 			await settings_record.save()
-		settings_record, created = get_or_create(0, 'summation', Settings, organization_id=organization_id, application_id=app_id, key='enabled_apis')
+		settings_record, created = await get_or_create(0, 'summation', Settings, organization_id=organization_id, application_id=app_id, key='enabled_apis')
 		if settings_record:
 			settings_record.value=results['apis']
 			await settings_record.save()
@@ -1169,7 +1169,7 @@ async def validate_token(token, organization_id, app_id):
 							except:
 								logger.error(f"could not evaluate role_search_path on token: {token}")
 						# if the role doesn't exist, create a record in the database for it
-						row, created = get_or_create(0, 'summation', Roles, organization_id=organization_id, name=claims['role'], application_id=app_id, enabled=True)
+						row, created = await get_or_create(0, 'summation', Roles, organization_id=organization_id, name=claims['role'], application_id=app_id, enabled=True)
 						claims['role_id'] = row.id
 				else:
 					logger.error("unsupported auth method")
