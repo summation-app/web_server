@@ -371,7 +371,7 @@ async def approved_queries_requests(request):
 @requires('authenticated')
 async def all_databases_apis(request):
 	"""
-	return a list of all databases & APIs
+	return a list of all databases & APIs (prefixes)
 	"""
 	try:
 		organization_id = request.user.organization_id
@@ -383,7 +383,11 @@ async def all_databases_apis(request):
 					results['databases'].append(db.name)
 			if apis := await APIs.filter(organization_id=organization_id):
 				for api in apis:
-					results['apis'].append(api.url)
+					regex_results = re.findall(url_regex, api.url)
+					if regex_results:
+						results['apis'].append(regex_results[0])
+					else:
+						logger.warning('could not find URL prefix')
 			return JSONResponse(results, status_code=200)
 		return JSONResponse(False, status_code=500)
 	except Exception as e:
