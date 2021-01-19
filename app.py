@@ -8,6 +8,7 @@ import uuid
 import os.path
 from asyncio import gather, create_task
 import re
+import copy
 import urllib.parse
 import sys
 from collections import defaultdict
@@ -730,7 +731,9 @@ async def enable_data_source_for_all_existing_apps(organization_id, data_source_
 			for app in apps:
 				setting, created = await get_or_create(0, 'summation', Settings, organization_id=organization_id, application_id=app.id, key=key)
 				if setting.value and isinstance(setting.value, list):
-					setting.value.append(name)
+					names_list = copy.copy(setting.value)
+					names_list.append(name)
+					setting.value = names_list
 					await setting.save()
 				else:
 					setting.value = [name]
