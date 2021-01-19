@@ -147,7 +147,7 @@ def request_validator_timer(func):
 			context['organization_id'] = organization_id
 
 			if auth_results := await Settings.get(organization_id=organization_id, application_id=app_id, key='authentication_method'):
-				auth_method = auth_results.value
+				auth_method = auth_results.value.selected_auth_method
 			else:
 				return JSONResponse({'error': 'no authentication setup for organization/application'}, status_code=403)
 
