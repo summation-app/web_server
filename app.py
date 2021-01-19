@@ -421,11 +421,13 @@ async def apps(request):
 		organization_id = request.user.organization_id
 
 		if request.method=='GET':
-			sql = """SELECT t1.id, t1.name, t1.enabled, t2.value->>'key' AS gateway_token_development, t3.value->>'key' AS gateway_token_production, t4.value AS auth_method, t5.value AS enabled_databases, t6.value AS enabled_apis FROM applications t1 LEFT JOIN settings t2 ON (t1.organization_id=t2.organization_id AND t1.id=t2.application_id AND t2.key='gateway_token') LEFT JOIN settings t3 ON (t1.organization_id=t3.organization_id AND t1.id=t3.application_id AND t3.key='gateway_token') LEFT JOIN settings t4 ON (t1.organization_id=t4.organization_id AND t1.id=t4.application_id AND t4.key='authentication_method') 
+			sql = """SELECT t1.id, t1.name, t1.enabled, t2.value->>'key' AS gateway_token_development, t3.value->>'key' AS gateway_token_production, t4.value AS auth_method, t5.value AS enabled_databases, t6.value AS enabled_apis 
+			FROM applications t1 LEFT JOIN settings t2 ON (t1.organization_id=t2.organization_id AND t1.id=t2.application_id AND t2.key='gateway_token'  AND t2.value->>'scope'='development') 
+			LEFT JOIN settings t3 ON (t1.organization_id=t3.organization_id AND t1.id=t3.application_id AND t3.key='gateway_token' AND t3.value->>'scope'='production') 
+			LEFT JOIN settings t4 ON (t1.organization_id=t4.organization_id AND t1.id=t4.application_id AND t4.key='authentication_method') 
 LEFT JOIN settings t5 ON (t1.organization_id=t5.organization_id AND t1.id=t5.application_id AND t5.key='enabled_databases')
 LEFT JOIN settings t6 ON (t1.organization_id=t6.organization_id AND t1.id=t6.application_id AND t6.key='enabled_apis')
-WHERE t1.organization_id=:organization_id AND t2.value->>'scope'='development'
-AND t3.value->>'scope'='production'"""
+WHERE t1.organization_id=:organization_id"""
 			if results := await query(0, 'summation', sql, {'organization_id': organization_id}):
 				return JSONResponse(results, status_code=200)
 			else:
