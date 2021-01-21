@@ -10,7 +10,7 @@ ENV ENVIRONMENT ${ENVIRONMENT}
 ENV LOCAL_FILE_STORAGE_PATH /var/lib/summation_web_server
 ENV LOCAL_FILE_LOG_PATH /var/log/summation.log
 ENV VECTOR_BIN_PATH /run/.vector/bin/vector
-# for logging
+# for logging in realtime
 ENV PYTHONUNBUFFERED True
 
 RUN apt-get update --fix-missing
