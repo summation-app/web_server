@@ -80,9 +80,9 @@ else:
 				info.update(self.sanitize_dict(context.data))
 			except Exception as e: # no context available
 				pass
-			self._worker_enqueue(record, info, **kwargs)
+			self._worker_enqueue(record, info)
 
-		def _worker_enqueue(self, record, info, resource=None, labels=None, trace=None, span_id=None, **kwargs):
+		def _worker_enqueue(self, record, info, resource=None, labels=None, trace=None, span_id=None):
 			queue_entry = {
 				"info": info,
 				"severity": record.levelname,
