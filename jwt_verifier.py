@@ -8,6 +8,8 @@ from authlib.jose.errors import (
 	InvalidTokenError
 )
 from dataclasses import dataclass, field
+from functools import lrucache
+
 import aiohttp
 import json
 import sys
@@ -21,6 +23,10 @@ logger = logging.getLogger(__name__)
 # TODO: switch to aiohttp instead of requests to make async
 # https://renzolucioni.com/verifying-jwts-with-jwks-and-pyjwt/
 subclasses = {}
+
+@lrucache()
+def get_cached_key(url):
+	return requests.get(url).json()
 
 @dataclass
 class JWTVerifier():
@@ -40,8 +46,7 @@ class JWTVerifier():
 		return subclasses[protocol](**kwargs)
 
 	def get_key(self, url, header):
-		r = requests.get(url)
-		jwks = r.json()
+		jwks = get_cached_key(url)
 		kid = header['kid']
 		for key in jwks["keys"]:
 			if key["kid"] == kid:
@@ -68,8 +73,7 @@ class Firebase(JWTVerifier):
 
 	def __post_init__(self):
 		self.certificate_url= 'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com'
-		r = requests.get(self.certificate_url)
-		certs = r.json()
+		certs = get_cached_key(self.certificate_url)
 		processed_token = jwt.get_unverified_header(self.token)
 		kid = processed_token['kid']
 		if kid not in certs:

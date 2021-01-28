@@ -44,7 +44,7 @@ from aiohttp.helpers import BasicAuth
 
 from db import *
 from jwt_verifier import *
-#from billing import *
+from secrets_manager import *
 from aiohttp import ClientSession, BasicAuth
 
 ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD')
@@ -61,7 +61,8 @@ async def startup():
 	session = ClientSession()
 	if ENVIRONMENT!='TEST':
 		await setup_pgcrypto()
-		await connect_to_all_databases()
+		secrets_manager = SecretsManager()
+		await connect_to_all_databases(secrets_manager)
 		generate_public_key_pair()
 		await create_default_roles_apps()
 		if ENVIRONMENT=='self_hosted':
@@ -125,7 +126,7 @@ middleware = [
 			plugins.ForwardedForPlugin(),
 		)
 	),
-	Middleware(CORSMiddleware, allow_origins=['*'],allow_credentials=True,allow_methods=["*"],allow_headers=["*"])
+	Middleware(CORSMiddleware, allow_origins=['*'], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 ]
 
 app = Starlette(debug=True, middleware=middleware, on_startup=[startup], on_shutdown=[shutdown])
@@ -152,6 +153,13 @@ def request_validator_timer(func):
 			kwargs['organization_id'] = organization_id
 			kwargs['app_id'] = app_id
 			context['organization_id'] = organization_id
+
+			# lookup credential_storage for the organization_id
+			if credential_results := await Settings.get(organization_id=organization_id, application_id=app_id, key='credential_storage'):
+				credential_storage = credential_results.value
+				kwargs['credential_storage_method'] = credential_storage.get('method')
+			else:
+				return JSONResponse({'error': 'no credential storage method setup for organization/application'}, status_code=403)
 
 			if auth_results := await Settings.get(organization_id=organization_id, application_id=app_id, key='authentication_method'):
 				auth_method = auth_results.value.get('selected_auth_method')
@@ -1003,7 +1011,7 @@ async def save_database(request):
 
 @app.route('/api', methods=['GET','POST'])
 @request_validator_timer
-async def api_gateway(request, organization_id, app_id, token_info):
+async def api_gateway(request, organization_id, app_id, token_info, credential_storage_method):
 	"""
 	validate JWT
 	get key from header, and check if development or production
@@ -1028,7 +1036,7 @@ async def api_gateway(request, organization_id, app_id, token_info):
 
 			if settings := await Settings.get(organization_id=organization_id, key='gateway_token', value={'key': gateway_token}):
 				scope = settings.value.get('scope')
-				result, status = await api(scope, organization_id, method, url, data, role_id, parameters, token_info, app_id)
+				result, status = await api(scope, organization_id, method, url, data, role_id, parameters, token_info, app_id, credential_storage_method)
 				return JSONResponse(result, status_code=status)
 			else:
 				logger.debug('no token info')
@@ -1037,7 +1045,7 @@ async def api_gateway(request, organization_id, app_id, token_info):
 		logger.error(e, exc_info=True)
 		return JSONResponse(None, status_code=500)
 
-async def api(scope, organization_id, method, url, data, role_id, parameters, jwt_claims, app_id, headers={}):
+async def api(scope, organization_id, method, url, data, role_id, parameters, jwt_claims, app_id, credential_storage_method, headers={}):
 	"""
 	"""
 	try:
@@ -1048,7 +1056,7 @@ async def api(scope, organization_id, method, url, data, role_id, parameters, jw
 				if not await check_app_enabled_for_data_source(organization_id, app_id, 'api', request['url']):
 					return {'error': 'this app is not enabled for this API - please do so in the settings->apps tab'}, 403
 				auth = None
-				request_url, headers, parameters, auth = prepare_authentication(request['authentication'], scope, request['production_key'], None, request['url'], headers, data, parameters)
+				request_url, headers, parameters, auth = prepare_authentication(request['authentication'], scope, request['production_key'], None, request['url'], headers, data, parameters, credential_storage_method, organization_id, app_id)
 				parameters, headers = await bind_params(organization_id, 'summation', parameters, scope, jwt_claims, headers=headers)
 				url, headers, parameters, data = merge_request_data_with_parent_api(headers, parameters, data, url, request['headers'], request_url, request['body'])
 				result = await proxy_request(method, url, headers, auth, parameters, data)
@@ -1078,7 +1086,7 @@ async def api(scope, organization_id, method, url, data, role_id, parameters, jw
 					# add full URL to requests table, link to apis.id
 					record, created = await get_or_create(0, 'summation', Requests, role_id=role_id, organization_id=organization_id, method=method, url=url, api_id=api['id'])
 					auth = None
-					api_url, headers, parameters, auth = prepare_authentication(api['authentication'], scope, api['production_key'], api['development_key'], api['url'], headers, data, parameters)
+					api_url, headers, parameters, auth = prepare_authentication(api['authentication'], scope, api['production_key'], api['development_key'], api['url'], headers, data, parameters, credential_storage_method, organization_id, app_id)
 					parameters, headers = await bind_params(organization_id, 'summation', parameters, scope, jwt_claims, headers=headers)
 					url, headers, parameters, data = merge_request_data_with_parent_api(headers, parameters, data, url, api['headers'], api_url, api['body'])
 					result = await proxy_request(method, url, headers, auth, parameters, data)
@@ -1204,45 +1212,6 @@ async def validate_gateway_token(token):
 	except Exception as e:
 		logger.error(e, exc_info=True)
 
-@app.route('/database_tables_with_access_controls', methods=['POST'])
-async def database_tables_with_access_controls(request):
-	"""
-	merge with any rules in the summation database
-	for that database_id/table_name
-	"""
-	try:
-		data = await request.json()
-		token = data.get('token')
-		organization_id = await validate_token(token).get('organization_id')
-		role_id = data.get('role_id')
-		results = {}
-		databases = await Databases.filter(organization_id=organization_id)
-		#databases = db_classes[organization_id].keys()
-		list_permissions = ['create_permission', 'read_permission', 'update_permission', 'delete_permission']
-		default_permissions = {key: None for key in list_permissions}
-		results = {database.name: default_permissions for database in databases}
-		for database in databases:
-			results[database.name]['database_name'] = database.name
-			results[database.name]['database_id'] = database.id
-		
-		for database in databases:
-			list_tables = list(db_classes[organization_id][database.name].keys())
-			sql = "SELECT t1.* FROM access_controls t1 INNER JOIN databases t2 ON (t1.database_id=t2.id) WHERE t1.scope='database' AND t2.name=:database AND t1.role_id=:role_id"
-			rows = await query(organization_id, 'summation', sql, {'database': database.name, 'role_id': role_id})
-			
-			# merge the results
-			rules_list = []
-			rules = {table_name: default_permissions for table_name in list_tables}
-			for row in rows or []:
-				rules[row['table_name']] = {key: row.get(key) for key in list_permissions}
-			for key, val in rules.items():
-				name_dict = {'table_name': key}
-				rules_list.append({**name_dict, **val}) # merge
-			results[database.name]['table_data'] = rules_list
-		return JSONResponse(list(results.values()))
-	except Exception as e:
-		logger.error(e, exc_info=True)
-
 @app.websocket_route('/logs')
 class WebSocketLogs(WebSocketEndpoint):
 	def __init__(self, scope: Scope, receive: Receive, send: Send) -> None:
@@ -1303,42 +1272,22 @@ class WebSocketLogs(WebSocketEndpoint):
 				if sleep_duration:
 					await asyncio.sleep(sleep_duration)
 
-@app.route('/save_access_controls', methods=['POST'])
-async def save_access_controls(request):
-	try:
-		data = await request.json()
-		token = data.get('token')
-		organization_id = validate_token(token).get('organization_id')
-		role_id = data.get('role_id')
-		controls = data.get('controls') # list of dictionaries
-		for control in controls:
-			# if the database-level controls are set, save it at a databse level (let the UI manage copying it to table-level)
-			if control['create_permission'] or control['delete_permission'] or control['read_permission'] or control['update_permission']:
-				record, created = await get_or_create(organization_id, control['database_name'], AccessControls, role_id=role_id, database_id=control['database_id'], table_name=None, scope='database')
-				record.create_permission = control['create_permission']
-				record.delete_permission = control['delete_permission']
-				record.read_permission = control['read_permission']
-				record.update_permission = control['update_permission']
-				await record.save()
-			table_controls = control['table_data']
-			for table in table_controls: # list of dictionaries
-				if table['create_permission'] or table['delete_permission'] or table['read_permission'] or table['update_permission']:
-					record, created = await get_or_create(organization_id, control['database_name'], AccessControls, role_id=role_id, database_id=control['database_id'], table_name=table['table_name'])
-					record.create_permission = table['create_permission']
-					record.delete_permission = table['delete_permission']
-					record.read_permission = table['read_permission']
-					record.update_permission = table['update_permission']
-					await record.save()
-		return JSONResponse(True)
-	except Exception as e:
-		logger.error(e, exc_info=True)
-
-def prepare_authentication(auth_settings, scope, production_key, development_key, url, headers, body, params):
+def prepare_authentication(auth_settings, scope, production_key, development_key, url, headers, body, params, credential_storage_method, organization_id, app_id):
 	"""
 	replace references to _KEY_ with the actual key in the URL & headers
 	"""
 	try:
 		auth = None
+
+		if ENVIRONMENT=='cloud':
+			if credential_storage_method=='database':
+				pass
+			else:
+				# override the keys from the database with those from a cloud key storage vault
+				production_key = secrets_manager.get_value(organization_id, app_id, data_source_type='api', data_source_name=url, key='production')
+				if scope=='development':
+					development_key = secrets_manager.get_value(organization_id, app_id, data_source_type='api', data_source_name=url, key='development')
+
 		key = production_key
 		if scope=='development':
 			key = development_key or production_key
@@ -1422,7 +1371,7 @@ async def proxy_request(method, url, headers, auth, parameters, data):
 
 @app.route('/database', methods=['GET','POST'])
 @request_validator_timer
-async def database_gateway(request, organization_id, app_id, token_info):
+async def database_gateway(request, organization_id, app_id, token_info, credential_storage_method):
 	"""
 	get gateway token, and check if development or production
 	check if query is whitelisted

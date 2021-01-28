@@ -434,7 +434,7 @@ def connect_to_database(database):
 			# URL is 'account'
 			connection_string = f"snowflake://{database['username']}:{database['password']}@{database['url']}"
 		elif database['engine']=='teradata':
-			connection_string = f"teradatasql://{database['url']}:{database['port']}?user={database['username']}&password={database['password']}"
+			connection_string = f"teradatasql://{database['url']}:{database['port']}?user={database['username']}&database['password']={database['password']}"
 		elif database['engine']=='db2':
 			connection_string = f"db2+ibm_db://{database['username']}:{database['password']}@{database['url']}:{database['port']}/{database['database_name']}"
 		elif database['engine']=='sap_hana':
@@ -472,7 +472,7 @@ def connect_to_database(database):
 		logger.error(f"could not connect to database_name: {database.get('name')}", {'organization_id': database.get('organization_id')})
 		logger.error(e, exc_info=True)
 
-async def connect_to_all_databases():
+async def connect_to_all_databases(secrets_manager):
 	"""
 	for each row in the 'databases' table
 
@@ -482,11 +482,17 @@ async def connect_to_all_databases():
 	we use SQL instead of the ORM, as we have to use pgcrypto decryption for the database passwords
 	"""
 	try:
-		sql = "SELECT organization_id, id, engine, url, port, username, PGP_SYM_DECRYPT(password\:\:bytea, :admin_password) AS password, database_name, schema, name FROM databases WHERE password IS NOT NULL"
-		results = await query(0, 'summation', sql, parameters={'admin_password': ADMIN_PASSWORD})
-		if results:
+		sql = "SELECT id, organization_id, engine, url, port, username, database_name, schema, name FROM databases WHERE password IS NOT NULL"
+		if results := await query(0, 'summation', sql, parameters={'admin_password': ADMIN_PASSWORD}):
+
+			# get all database credentials from the secrets manager
+			tasks = [secrets_manager.get(organization_id=result['organization_id'], table_name='databases', id=result['id'], key='password') for result in results]
+			passwords = await asyncio.gather(*tasks) # continues even if a single coroutine fails
+			for result, password in zip(results, passwords):
+				result['password'] = password
+
 			with ThreadPoolExecutor() as executor:
-				result = executor.map(connect_to_database, results)
+				executor.map(connect_to_database, results)
 			logger.debug(db_classes)
 	except Exception as e:
 		logger.error(e, exc_info=True)
