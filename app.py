@@ -503,6 +503,36 @@ WHERE t1.organization_id=:organization_id"""
 		logger.error(e, exc_info=True)
 		return JSONResponse(False, status_code=500)
 
+@app.route('/credential_storage', methods=['GET','POST'])
+@requires('authenticated')
+async def credential_storage(request):
+	"""
+	"""
+	try:
+		if request.method=='GET':
+			organization_id = request.user.organization_id
+			if result := await Settings.get(organization_id=organization_id, key='credential_storage'):
+				credential_storage_vendor = result.value.get('protocol')
+				return JSONResponse(credential_storage_vendor, status_code=200)
+			else:
+				logger.debug("no credential storage setting found")
+				return JSONResponse(None, status_code=200)
+		elif request.method=='POST':
+			data = await request.json()
+			protocol = data.get('protocol')
+			configuration = data.get('configuration')
+			if protocol and configuration:
+				configuration['protocol'] = protocol
+				setting, created = await get_or_create(0, 'summation', Settings, organization_id=organization_id, key='credential_storage')
+				setting.value = configuration
+				await setting.save()
+				return JSONResponse(True, status_code=200)
+			else:
+				logger.warning('missing protocol/configuration')
+				return JSONResponse(True, status_code=500)
+	except Exception as e:
+		logger.error(e, exc_info=True)
+
 @app.route('/logging', methods=['POST'])
 @requires('authenticated')
 async def get_logging_config(request):

@@ -10,6 +10,7 @@ from db import query, Settings
 
 logger = logging.getLogger(__name__)
 ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD')
+ENVIRONMENT = os.getenv('ENVIRONMENT', 'self_hosted') # 'self_hosted', 'cloud', 'test'
 
 subclasses = {}
 
@@ -18,7 +19,22 @@ class SecretsManager():
 	def __init__(self):
 		self.connections_for_orgs_apps = defaultdict(dict) # separate manager for each org/app
 		self.connections_for_orgs = {} # a single manager for each org
+
+	def initialize(self):
+		"""
+		populate org_secrets for every org & app that's configured in the database
+		"""
 		self.connections_for_orgs[0] = Secrets.create('database_pgp') # default
+		if ENVIRONMENT=='cloud':
+			if results := await Settings.filter(key='credential_storage'):
+				with ThreadPoolExecutor() as executor:
+					result = executor.map(self.create_connection, results)
+
+	def create_connection(self, result):
+		if result.application_id:
+			self.connections_for_orgs_apps[result.organization_id][result.application_id] = Secrets.create(result.value.get('protocol'), **result.value)
+		elif result.organization_id:
+			self.connections_for_orgs[result.organization_id] = Secrets.create(result.value.get('protocol'), **result.value)
 
 	def get_manager(self, organization_id, application_id=None):
 		"""
@@ -33,6 +49,7 @@ class SecretsManager():
 			manager = self.connections_for_orgs.get(organization_id)
 		if not manager:
 			logger.error(f"no secrets manager exists for organization_id:{organization_id} application_id:{application_id}")
+			return None
 		return manager
 
 	async def get(self, **kwargs):

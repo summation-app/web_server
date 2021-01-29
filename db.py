@@ -482,7 +482,7 @@ async def connect_to_all_databases(secrets_manager):
 	we use SQL instead of the ORM, as we have to use pgcrypto decryption for the database passwords
 	"""
 	try:
-		sql = "SELECT id, organization_id, engine, url, port, username, database_name, schema, name FROM databases WHERE password IS NOT NULL"
+		sql = "SELECT id, organization_id, engine, url, port, username, database_name, schema, name FROM databases"
 		if results := await query(0, 'summation', sql, parameters={'admin_password': ADMIN_PASSWORD}):
 
 			# get all database credentials from the secrets manager
