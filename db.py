@@ -575,3 +575,16 @@ def query(org_id, database_name, sql, parameters={}):
 	finally:
 		session.commit() # sometimes SQLalchemy will close the connection when this is called
 		session_factory.remove()
+
+async def setup_pgcrypto():
+	"""
+	PGP_SYM_ENCRYPT('John','AES_KEY')
+	PGP_SYM_ENCRYPT('marco stuff', 'key')::text
+	PGP_SYM_DECRYPT(name::bytea, 'AES_KEY')
+	PGP_SYM_DECRYPT(column_name::bytea, 'key')
+	"""
+	try:
+		results = await query(0, 'summation', "CREATE EXTENSION IF NOT EXISTS pgcrypto")
+		logger.debug(results)
+	except Exception as e:
+		logger.error(e, exc_info=True)

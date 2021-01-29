@@ -58,6 +58,7 @@ logger = JSONLoggingAdapter(logging.getLogger(__name__))
 async def startup():
 	global session
 	global log_server
+	global secrets_manager
 	session = ClientSession()
 	if ENVIRONMENT!='TEST':
 		await setup_pgcrypto()
@@ -293,8 +294,13 @@ async def get_databases(request):
 		databases = []
 		organization_id = request.user.organization_id
 
-		sql = "SELECT id, engine, url, port, username, PGP_SYM_DECRYPT(password\:\:bytea, :admin_key) AS password, database_name, schema, name FROM databases WHERE organization_id=:organization_id"
+		sql = "SELECT id, engine, url, port, username, database_name, schema, name FROM databases WHERE organization_id=:organization_id"
 		if results := await query(0, 'summation', sql, {'organization_id': organization_id, 'admin_key': ADMIN_PASSWORD}):
+			# get all database credentials from the secrets manager
+			tasks = [secrets_manager.get(organization_id=result['organization_id'], table_name='databases', id=result['id'], key='password') for result in results]
+			passwords = await asyncio.gather(*tasks) # continues even if a single coroutine fails
+			for result, password in zip(results, passwords):
+				result['password'] = password
 			return JSONResponse(results, status_code=200)
 		else:
 			return JSONResponse([], status_code=200)
@@ -335,8 +341,15 @@ async def get_apis(request):
 		apis = []
 		organization_id = request.user.organization_id
 
-		sql = "SELECT id, name, url, PGP_SYM_DECRYPT(production_key\:\:bytea, :admin_key) AS production_key, PGP_SYM_DECRYPT(development_key\:\:bytea, :admin_key) AS development_key, method, authentication, value, headers, body FROM \"APIs\" WHERE organization_id=:organization_id"
+		sql = "SELECT id, name, url, method, authentication, value, headers, body FROM \"APIs\" WHERE organization_id=:organization_id"
 		if results := await query(0, 'summation', sql, {'organization_id': organization_id, 'admin_key': ADMIN_PASSWORD}):
+			# get all database credentials from the secrets manager
+			keys = ['production_key', 'development_key']
+			for key in keys:
+				tasks = [secrets_manager.get(organization_id=result['organization_id'], table_name='APIs', id=result['id'], key=key) for result in results]
+				decrypted_keys = await asyncio.gather(*tasks) # continues even if a single coroutine fails
+				for result, decrypted_key in zip(results, decrypted_keys):
+					result[key] = decrypted_key			
 			return JSONResponse(results, status_code=200)
 		else:
 			return JSONResponse([], status_code=200)
@@ -788,19 +801,6 @@ async def create_default_roles_apps():
 	except Exception as e:
 		logger.error(e, exc_info=True)
 
-async def setup_pgcrypto():
-	"""
-	PGP_SYM_ENCRYPT('John','AES_KEY')
-	PGP_SYM_ENCRYPT('marco stuff', 'key')::text
-	PGP_SYM_DECRYPT(name::bytea, 'AES_KEY')
-	PGP_SYM_DECRYPT(column_name::bytea, 'key')
-	"""
-	try:
-		results = await query(0, 'summation', "CREATE EXTENSION IF NOT EXISTS pgcrypto")
-		logger.debug(results)
-	except Exception as e:
-		logger.error(e, exc_info=True)
-
 async def generate_gateway_tokens(organization_id, force=True, app_id=None):
 	"""
 	generates new gateway token, unless Force=False in which case we use get_or_create
@@ -877,7 +877,7 @@ async def save_api(request):
 						development_key = token
 
 		if request.method=='POST':
-			sql = "INSERT INTO \"APIs\"(organization_id, method, url, body, headers, authentication, production_key, development_key) VALUES(:organization_id, :method, :url, :body, :headers, :authentication, PGP_SYM_ENCRYPT(:production_key, :admin_password)\:\:text, PGP_SYM_ENCRYPT(:development_key, :admin_password)\:\:text)"
+			sql = "INSERT INTO \"APIs\"(organization_id, method, url, body, headers, authentication) VALUES(:organization_id, :method, :url, :body, :headers, :authentication) RETURNING id"
 			result = await query(0, 'summation', sql, {
 				'organization_id': organization_id,
 				'admin_password': ADMIN_PASSWORD, 
@@ -885,16 +885,18 @@ async def save_api(request):
 				'url': url,
 				'body': None,
 				'headers': json.dumps(headers),
-				'production_key': production_key,
-				'development_key': development_key,
 				'authentication': json.dumps(authentication)})
 			logger.debug(result)
+			keys = ['production_key', 'development_key']
+			for key in keys:
+				await secrets_manager.set(organization_id=result['organization_id'], table_name='APIs', id=result, key=key, value=locals()[key])
+
 
 			if enable_data_source:
 				await enable_data_source_for_all_existing_apps(organization_id, 'api', url)
 		elif request.method=='PATCH' and id:
 			if record := await APIs.get(id=id, organization_id=organization_id):
-				sql = "UPDATE \"APIs\" SET method=:method, url=:url, headers=:headers, authentication=:authentication, production_key=PGP_SYM_ENCRYPT(:production_key, :admin_password)\:\:text, development_key=PGP_SYM_ENCRYPT(:development_key, :admin_password)\:\:text WHERE organization_id=:organization_id AND id=:id"
+				sql = "UPDATE \"APIs\" SET method=:method, url=:url, headers=:headers, authentication=:authentication WHERE organization_id=:organization_id AND id=:id"
 				result = await query(0, 'summation', sql, {
 					'id': id,
 					'organization_id': organization_id,
@@ -903,10 +905,12 @@ async def save_api(request):
 					'url': url,
 					'body': None,
 					'headers': json.dumps(headers),
-					'production_key': production_key,
-					'development_key': development_key,
 					'authentication': json.dumps(authentication)})
 				logger.debug(result)
+
+				keys = ['production_key', 'development_key']
+				for key in keys:
+					await secrets_manager.set(organization_id=organization_id, table_name='databases', id=id, key=key, value=locals()[key])
 			else:
 				logger.error('could not find record to update')
 				return JSONResponse({'status': False, 'error': 'could not find record to update'})
@@ -948,7 +952,7 @@ async def save_database(request):
 		organization_id = request.user.organization_id
 
 		if request.method=='POST':
-			sql = "INSERT INTO databases (organization_id, engine, url, port, username, password, database_name, schema, name) VALUES(:organization_id, :engine, :url, :port, :username, PGP_SYM_ENCRYPT(:password, :admin_password)\:\:text, :database_name, :schema, :name) RETURNING id"
+			sql = "INSERT INTO databases (organization_id, engine, url, port, username, database_name, schema, name) VALUES(:organization_id, :engine, :url, :port, :username, :database_name, :schema, :name) RETURNING id"
 			database_record = {
 				'organization_id': organization_id,
 				'engine': engine,
@@ -965,11 +969,13 @@ async def save_database(request):
 			logger.debug(result)
 			database_record['id'] = result
 
+			await secrets_manager.set(organization_id=organization_id, table_name='databases', id=result, key='password', value=password)
+
 			if enable_data_source:
 				await enable_data_source_for_all_existing_apps(organization_id, 'database', name)
 		elif request.method=='PATCH' and id:
 			if record := await Databases.get(id=id, organization_id=organization_id):
-				sql = "UPDATE databases SET password=PGP_SYM_ENCRYPT(:password, :admin_password)\:\:text, engine=:engine, url=:url, port=:port, username=:username, database_name=:database_name, schema=:schema, name=:name WHERE organization_id=:organization_id AND id=:id"
+				sql = "UPDATE databases SET engine=:engine, url=:url, port=:port, username=:username, database_name=:database_name, schema=:schema, name=:name WHERE organization_id=:organization_id AND id=:id"
 				database_record = {
 					'id': id,
 					'organization_id': organization_id,
@@ -984,6 +990,8 @@ async def save_database(request):
 					'name': name
 				}
 				result = await query(0, 'summation', sql, database_record)
+
+				await secrets_manager.set(organization_id=organization_id, table_name='databases', id=id, key='password', value=password)
 			else:
 				logger.error('could not find record to update')
 				return JSONResponse({'status': False, 'error': 'could not find record to update'})
@@ -1050,13 +1058,14 @@ async def api(scope, organization_id, method, url, data, role_id, parameters, jw
 	"""
 	try:
 		if scope=='production':
-			sql = "SELECT t1.*, PGP_SYM_DECRYPT(t2.production_key\:\:bytea, :admin_key) AS production_key, t2.authentication, t2.body, t2.headers, t2.url FROM summation.requests t1 INNER JOIN \"APIs\" t2 ON (t1.api_id=t2.id) WHERE t2.organization_id=:organization_id AND t1.method=:method AND t1.url=:url AND t2.role_id=:role_id"
+			sql = "SELECT t1.*, t2.id AS api_id, t2.authentication, t2.body, t2.headers, t2.url FROM summation.requests t1 INNER JOIN \"APIs\" t2 ON (t1.api_id=t2.id) WHERE t2.organization_id=:organization_id AND t1.method=:method AND t1.url=:url AND t2.role_id=:role_id"
 			if request_results := await query(0, 'summation', sql, {'organization_id': organization_id, 'admin_key': ADMIN_PASSWORD, 'method': method, 'url': url, 'role_id': role_id}):
 				request = request_results[0]
 				if not await check_app_enabled_for_data_source(organization_id, app_id, 'api', request['url']):
 					return {'error': 'this app is not enabled for this API - please do so in the settings->apps tab'}, 403
+				production_key = await secrets_manager.get(organization_id=organization_id, application_id=app_id, table_name='APIs', id=request['api_id'], key='production_key')
 				auth = None
-				request_url, headers, parameters, auth = prepare_authentication(request['authentication'], scope, request['production_key'], None, request['url'], headers, data, parameters, credential_storage_method, organization_id, app_id)
+				request_url, headers, parameters, auth = prepare_authentication(request['authentication'], scope, production_key, None, request['url'], headers, data, parameters)
 				parameters, headers = await bind_params(organization_id, 'summation', parameters, scope, jwt_claims, headers=headers)
 				url, headers, parameters, data = merge_request_data_with_parent_api(headers, parameters, data, url, request['headers'], request_url, request['body'])
 				result = await proxy_request(method, url, headers, auth, parameters, data)
@@ -1077,16 +1086,16 @@ async def api(scope, organization_id, method, url, data, role_id, parameters, jw
 				if not await check_app_enabled_for_data_source(organization_id, app_id, 'api', regex_results[0]):
 					return {'error': 'this app is not enabled for this API - please do so in the settings->apps tab'}, 403
 				url_prefix = regex_results[0] + '%'
-				logger.debug(url_prefix)
-				logger.debug(f'organization_id: {organization_id}')
 				# check if matches the URL prefix of any added API
-				sql = "SELECT id, PGP_SYM_DECRYPT(production_key\:\:bytea, :admin_key) AS production_key, PGP_SYM_DECRYPT(development_key\:\:bytea, :admin_key) AS development_key, authentication, body, headers, url FROM \"APIs\" WHERE url LIKE :url AND organization_id=:organization_id"
+				sql = "SELECT id, authentication, body, headers, url FROM \"APIs\" WHERE url LIKE :url AND organization_id=:organization_id"
 				if api_match := await query(0, 'summation', sql, {'admin_key': ADMIN_PASSWORD, 'url': url_prefix, 'organization_id': organization_id}):
 					api = api_match[0]
+					production_key = await secrets_manager.get(organization_id=organization_id, application_id=app_id, table_name='APIs', id=api['id'], key='production_key')
+					development_key = await secrets_manager.get(organization_id=organization_id, application_id=app_id, table_name='APIs', id=api['id'], key='development_key')
 					# add full URL to requests table, link to apis.id
 					record, created = await get_or_create(0, 'summation', Requests, role_id=role_id, organization_id=organization_id, method=method, url=url, api_id=api['id'])
 					auth = None
-					api_url, headers, parameters, auth = prepare_authentication(api['authentication'], scope, api['production_key'], api['development_key'], api['url'], headers, data, parameters, credential_storage_method, organization_id, app_id)
+					api_url, headers, parameters, auth = prepare_authentication(api['authentication'], scope, production_key, development_key, api['url'], headers, data, parameters)
 					parameters, headers = await bind_params(organization_id, 'summation', parameters, scope, jwt_claims, headers=headers)
 					url, headers, parameters, data = merge_request_data_with_parent_api(headers, parameters, data, url, api['headers'], api_url, api['body'])
 					result = await proxy_request(method, url, headers, auth, parameters, data)
@@ -1272,22 +1281,12 @@ class WebSocketLogs(WebSocketEndpoint):
 				if sleep_duration:
 					await asyncio.sleep(sleep_duration)
 
-def prepare_authentication(auth_settings, scope, production_key, development_key, url, headers, body, params, credential_storage_method, organization_id, app_id):
+def prepare_authentication(auth_settings, scope, production_key, development_key, url, headers, body, params):
 	"""
 	replace references to _KEY_ with the actual key in the URL & headers
 	"""
 	try:
 		auth = None
-
-		if ENVIRONMENT=='cloud':
-			if credential_storage_method=='database':
-				pass
-			else:
-				# override the keys from the database with those from a cloud key storage vault
-				production_key = secrets_manager.get_value(organization_id, app_id, data_source_type='api', data_source_name=url, key='production')
-				if scope=='development':
-					development_key = secrets_manager.get_value(organization_id, app_id, data_source_type='api', data_source_name=url, key='development')
-
 		key = production_key
 		if scope=='development':
 			key = development_key or production_key

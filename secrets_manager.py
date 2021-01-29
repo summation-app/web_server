@@ -39,19 +39,13 @@ class SecretsManager():
 		"""
 		"""
 		if manager := self.get_manager(kwargs.get('organization_id'), kwargs.get('application_id')):
-			if 'table_name' in kwargs.keys():
-				return await manager.get(kwargs['organization_id'], kwargs['table_name'], kwargs['id'], kwargs['key'])
-			else:
-				return await manager.get(kwargs.get('data_source_type'), kwargs.get('data_source_name'), kwargs.get('key'))
+			return await manager.get(kwargs['organization_id'], kwargs['table_name'], kwargs['id'], kwargs['key'])
 
 	async def set(self, **kwargs):
 		"""
 		"""
 		if manager := self.get_manager(kwargs.get('organization_id'), kwargs.get('application_id')):
-			if 'table_name' in kwargs.keys():
-				await manager.set(kwargs['organization_id'], kwargs['table_name'], kwargs['id'], kwargs['key'], kwargs.get('value'))
-			else:
-				await manager.set(kwargs.get('data_source_type'), kwargs.get('data_source_name'), kwargs.get('key'), kwargs.get('value'))
+			await manager.set(kwargs['organization_id'], kwargs['table_name'], kwargs['id'], kwargs['key'], kwargs.get('value'))
 			return True
 
 @dataclass
@@ -78,7 +72,7 @@ class DatabasePGP(Secrets):
 		"""
 		"""
 		try:
-			sql = f"SELECT PGP_SYM_DECRYPT(:column_name\:\:bytea, :admin_key) AS value FROM \":table_name\" WHERE organization_id=:organization_id AND id=:id"
+			sql = "SELECT PGP_SYM_DECRYPT(:column_name\:\:bytea, :admin_key) AS value FROM \":table_name\" WHERE organization_id=:organization_id AND id=:id"
 			result = await query(0, 'summation', sql, {
 				'admin_password': ADMIN_PASSWORD, 
 				'organization_id': organization_id,
