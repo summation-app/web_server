@@ -19,12 +19,13 @@ class SecretsManager():
 	def __init__(self):
 		self.connections_for_orgs_apps = defaultdict(dict) # separate manager for each org/app
 		self.connections_for_orgs = {} # a single manager for each org
+		self.initialize()
 
 	def initialize(self):
 		"""
 		populate org_secrets for every org & app that's configured in the database
 		"""
-		self.connections_for_orgs[0] = Secrets.create('database_pgp') # default
+		self.connections_for_orgs[0] = Secrets.create_manager('database_pgp') # default
 		if ENVIRONMENT=='cloud':
 			if results := await Settings.filter(key='credential_storage'):
 				with ThreadPoolExecutor() as executor:
@@ -32,9 +33,9 @@ class SecretsManager():
 
 	def create_connection(self, result):
 		if result.application_id:
-			self.connections_for_orgs_apps[result.organization_id][result.application_id] = Secrets.create(result.value.get('protocol'), **result.value)
+			self.connections_for_orgs_apps[result.organization_id][result.application_id] = Secrets.create_manager(result.value.get('protocol'), **result.value)
 		elif result.organization_id:
-			self.connections_for_orgs[result.organization_id] = Secrets.create(result.value.get('protocol'), **result.value)
+			self.connections_for_orgs[result.organization_id] = Secrets.create_manager(result.value.get('protocol'), **result.value)
 
 	def get_manager(self, organization_id, application_id=None):
 		"""
@@ -51,6 +52,15 @@ class SecretsManager():
 			logger.error(f"no secrets manager exists for organization_id:{organization_id} application_id:{application_id}")
 			return None
 		return manager
+
+	def change_protocol(self, organization_id, new_protocol, application_id=None, **kwargs):
+		"""
+		"""
+		if application_id:
+			self.connections_for_orgs_apps[organization_id][application_id] = Secrets.create_manager(new_protocol, **kwargs)
+		else:
+			self.connections_for_orgs[organization_id] = Secrets.create_manager(new_protocol, **kwargs)
+		return True
 
 	async def get(self, **kwargs):
 		"""
@@ -74,7 +84,7 @@ class Secrets():
 		subclasses[cls._protocol] = cls
 
 	@classmethod
-	def create(cls, protocol, **kwargs):
+	def create_manager(cls, protocol, **kwargs):
 		#if protocol not in cls.subclasses:
 		if protocol not in ['database_pgp','aws','azure','gcp']:
 			raise ValueError('Bad secrets protocol {}'.format(protocol))
@@ -123,3 +133,38 @@ class DatabasePGP(Secrets):
 			logger.error(e, exc_info=True)
 			logger.error(f"could not get credentials for: table: {table_name}, id: {id}, column: {key}")
 			return False
+
+	async def get_all(self, organization_id):
+		"""
+		return a list of all secrets [{table_name: '', id: '', ....}]
+		"""
+		try:
+			all_results = []
+			# APIs first
+			sql = """SELECT id, 'APIs' AS table_name, 'production_key' AS key, PGP_SYM_DECRYPT(:production_key\:\:bytea, :admin_key) AS value FROM \"APIs\" WHERE organization_id=:organization_id AND production_key IS NOT NULL
+			UNION ALL
+			SELECT id, 'APIs' AS table_name, 'development_key' AS key, PGP_SYM_DECRYPT(:development_key\:\:bytea, :admin_key) AS value FROM \"APIs\" WHERE organization_id=:organization_id AND development_key IS NOT NULL"""
+			results = await query(0, 'summation', sql, {
+				'admin_password': ADMIN_PASSWORD, 
+				'organization_id': organization_id
+				}
+			)
+			if results:
+				all_results = all_results + results
+			else:
+				logger.debug(f"could not get any API credentials for: organization_id: {organization_id}")
+
+			# Databases next
+			sql = "SELECT id, 'databases' AS table_name, 'password' AS key, PGP_SYM_DECRYPT(:password\:\:bytea, :admin_key) AS value FROM databases WHERE organization_id=:organization_id AND password IS NOT NULL"
+			results = await query(0, 'summation', sql, {
+				'admin_password': ADMIN_PASSWORD, 
+				'organization_id': organization_id
+				}
+			)
+			if results:
+				all_results = all_results + results
+			else:
+				logger.debug(f"could not get any database credentials for: organization_id: {organization_id}")
+			return all_results
+		except Exception as e:
+			logger.error(e, exc_info=True)
