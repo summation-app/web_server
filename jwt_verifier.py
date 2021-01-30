@@ -8,7 +8,7 @@ from authlib.jose.errors import (
 	InvalidTokenError
 )
 from dataclasses import dataclass, field
-from functools import lrucache
+from functools import lru_cache
 
 import aiohttp
 import json
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 # https://renzolucioni.com/verifying-jwts-with-jwks-and-pyjwt/
 subclasses = {}
 
-@lrucache()
+@lru_cache()
 def get_cached_key(url):
 	return requests.get(url).json()
 
