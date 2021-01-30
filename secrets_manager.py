@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass, field
-from functools import lrucache
+from functools import lru_cache
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 import json
@@ -94,7 +94,7 @@ class Secrets():
 class DatabasePGP(Secrets):
 	_protocol = 'database_pgp'
 
-	@lrucache()
+	@lru_cache()
 	async def get(self, organization_id, table_name, id, key):
 		"""
 		"""
