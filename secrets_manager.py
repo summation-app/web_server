@@ -19,9 +19,9 @@ class SecretsManager():
 	def __init__(self):
 		self.connections_for_orgs_apps = defaultdict(dict) # separate manager for each org/app
 		self.connections_for_orgs = {} # a single manager for each org
-		self.initialize()
+		await self.initialize()
 
-	def initialize(self):
+	async def initialize(self):
 		"""
 		populate org_secrets for every org & app that's configured in the database
 		"""
