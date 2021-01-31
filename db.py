@@ -489,8 +489,10 @@ async def connect_to_all_databases(secrets_manager):
 			tasks = [secrets_manager.get(organization_id=result['organization_id'], table_name='databases', id=result['id'], key='password') for result in results]
 			passwords = await asyncio.gather(*tasks) # continues even if a single coroutine fails
 			for result, password in zip(results, passwords):
-				result['password'] = password
-
+				if password:
+					result['password'] = password
+				else:
+					logger.warning(f"could not get password for database: {result['id']}, not connecting to it")
 			with ThreadPoolExecutor() as executor:
 				executor.map(connect_to_database, results)
 			logger.debug(db_classes)
