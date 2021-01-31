@@ -68,7 +68,10 @@ class SecretsManager():
 		"""
 		"""
 		if manager := self.get_manager(kwargs.get('organization_id'), kwargs.get('application_id')):
-			return await manager.get(kwargs['organization_id'], kwargs['table_name'], kwargs['id'], kwargs['key'])
+			logger.debug('got manager in get')
+			result = await manager.get(kwargs['organization_id'], kwargs['table_name'], kwargs['id'], kwargs['key'])
+			logger.debug('result:' + str(result))
+			return result
 
 	async def set(self, **kwargs):
 		"""
