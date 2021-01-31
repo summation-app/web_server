@@ -98,22 +98,23 @@ class Secrets():
 class DatabasePGP(Secrets):
 	protocol = 'database_pgp'
 
-	@lru_cache()
+	#@lru_cache()
 	async def get(self, organization_id, table_name, id, key):
 		"""
 		"""
 		try:
-			logger.debug('in database pgp get')
-			sql = "SELECT PGP_SYM_DECRYPT(:column_name\:\:bytea, :admin_key) AS value FROM \":table_name\" WHERE organization_id=:organization_id AND id=:id"
+			if table_name not in ['databases', 'APIs']:
+				logger.error('table_name parameter is not one of the approved tables for DatabasePGP class')
+				return None
+			sql = f"SELECT PGP_SYM_DECRYPT({key}\:\:bytea, :admin_password) AS value FROM \"{table_name}\" WHERE organization_id=:organization_id AND id=:id"
 			result = await query(0, 'summation', sql, {
 				'admin_password': ADMIN_PASSWORD, 
 				'organization_id': organization_id,
 				'id': id,
-				'column_name': key
 				}
 			)
 			if result:
-				return result[0].value
+				return result[0].get('value')
 			else:
 				logger.error(f"could not get credentials for: table: {table_name}, id: {id}, column: {key}")
 				return None
@@ -124,12 +125,14 @@ class DatabasePGP(Secrets):
 		"""
 		"""
 		try:
-			sql = "UPDATE :table_name SET :column_name=PGP_SYM_ENCRYPT(:value, :admin_password)\:\:text WHERE organization_id=:organization_id AND id=:id"
+			if table_name not in ['databases', 'APIs']:
+				logger.error('table_name parameter is not one of the approved tables for DatabasePGP class')
+				return None
+			sql = f"UPDATE \"{table_name}\" SET {key}=PGP_SYM_ENCRYPT(:value, :admin_password)\:\:text WHERE organization_id=:organization_id AND id=:id"
 			result = await query(0, 'summation', sql, {
 				'admin_password': ADMIN_PASSWORD, 
 				'organization_id': organization_id,
 				'id': id,
-				'column_name': key,
 				'value': value
 				}
 			)
