@@ -33,10 +33,10 @@ class SecretsManager():
 
 	def create_connection(self, result):
 		if result.application_id:
-			logger.debug("creating secrets connection for org_id: {result.organization_id} application_id: {result.application_id}")
+			logger.debug(f"creating secrets connection for org_id: {result.organization_id} application_id: {result.application_id}")
 			self.connections_for_orgs_apps[result.organization_id][result.application_id] = Secrets.create_manager(result.value.get('protocol'), **result.value)
 		elif result.organization_id:
-			logger.debug("creating secrets connection for org_id: {result.organization_id}")
+			logger.debug(f"creating secrets connection for org_id: {result.organization_id}")
 			self.connections_for_orgs[result.organization_id] = Secrets.create_manager(result.value.get('protocol'), **result.value)
 
 	def get_manager(self, organization_id, application_id=None):
@@ -100,6 +100,7 @@ class DatabasePGP(Secrets):
 		"""
 		"""
 		try:
+			logger.debug('in database pgp get')
 			sql = "SELECT PGP_SYM_DECRYPT(:column_name\:\:bytea, :admin_key) AS value FROM \":table_name\" WHERE organization_id=:organization_id AND id=:id"
 			result = await query(0, 'summation', sql, {
 				'admin_password': ADMIN_PASSWORD, 
