@@ -63,6 +63,7 @@ async def startup():
 	if ENVIRONMENT!='TEST':
 		await setup_pgcrypto()
 		secrets_manager = SecretsManager()
+		await secrets_manager.initialize()
 		await connect_to_all_databases(secrets_manager)
 		generate_public_key_pair()
 		await create_default_roles_apps()
