@@ -17,7 +17,7 @@ subclasses = {}
 
 class SecretsManager():
 
-	async def __init__(self):
+	def __init__(self):
 		self.connections_for_orgs_apps = defaultdict(dict) # separate manager for each org/app
 		self.connections_for_orgs = {} # a single manager for each org
 
