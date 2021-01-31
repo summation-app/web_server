@@ -68,7 +68,7 @@ class SecretsManager():
 		"""
 		"""
 		if manager := self.get_manager(kwargs.get('organization_id'), kwargs.get('application_id')):
-			logger.debug('got manager in get with kwargs:' + str(kwargs))
+			logger.debug('got manager in get with kwargs:' + str(kwargs) + ' and manager dir ' + str(dir(manager)))
 			result = await manager.get(kwargs['organization_id'], kwargs['table_name'], kwargs['id'], kwargs['key'])
 			logger.debug('result:' + str(result))
 			return result
