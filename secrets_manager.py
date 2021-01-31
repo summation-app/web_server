@@ -79,11 +79,11 @@ class SecretsManager():
 
 @dataclass
 class Secrets():
-	_protocol: str
+	protocol: str
 
 	def __init_subclass__(cls, **kwargs):
 		super().__init_subclass__(**kwargs)
-		subclasses[cls._protocol] = cls
+		subclasses[cls.protocol] = cls
 
 	@classmethod
 	def create_manager(cls, protocol, **kwargs):
@@ -94,7 +94,7 @@ class Secrets():
 
 @dataclass
 class DatabasePGP(Secrets):
-	_protocol = 'database_pgp'
+	protocol = 'database_pgp'
 
 	@lru_cache()
 	async def get(self, organization_id, table_name, id, key):
