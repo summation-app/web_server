@@ -79,7 +79,6 @@ class SecretsManager():
 
 @dataclass
 class Secrets():
-	protocol: str
 
 	def __init_subclass__(cls, **kwargs):
 		super().__init_subclass__(**kwargs)
