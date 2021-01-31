@@ -5,6 +5,7 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 import json
 import os
+from asyncio import create_task
 
 from db import query, Settings
 
@@ -19,7 +20,6 @@ class SecretsManager():
 	async def __init__(self):
 		self.connections_for_orgs_apps = defaultdict(dict) # separate manager for each org/app
 		self.connections_for_orgs = {} # a single manager for each org
-		await self.initialize()
 
 	async def initialize(self):
 		"""
