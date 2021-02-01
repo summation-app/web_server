@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 from asyncio import create_task
+import copy
 
 from db import query, Settings
 
@@ -25,24 +26,29 @@ class SecretsManager():
 		"""
 		populate org_secrets for every org & app that's configured in the database
 		"""
-		self.connections_for_orgs[0] = Secrets.create_manager('database_pgp') # default
-		if ENVIRONMENT=='cloud':
-			if results := await Settings.filter(key='credential_storage'):
-				with ThreadPoolExecutor() as executor:
-					result = executor.map(self.create_connection, results)
+		try:
+			self.connections_for_orgs[0] = Secrets.create_manager('database_pgp') # default
+			if ENVIRONMENT=='cloud':
+				if results := await Settings.filter(key='credential_storage'):
+					with ThreadPoolExecutor() as executor:
+						result = executor.map(self.create_connection, results)
+		except Exception as e:
+			logger.error(e, exc_info=True)
 
 	def create_connection(self, result):
 		"""
 		"""
 		try:
+			settings = copy.deepcopy(result.value)
+			protocol = settings.pop('protocol')
 			if result.application_id:
 				logger.debug(f"creating secrets connection for org_id: {result.organization_id} application_id: {result.application_id}")
-				self.connections_for_orgs_apps[result.organization_id][result.application_id] = Secrets.create_manager(result.value.get('protocol'), **result.value)
+				self.connections_for_orgs_apps[result.organization_id][result.application_id] = Secrets.create_manager(protocol, **settings)
 			elif result.organization_id:
 				logger.debug(f"creating secrets connection for org_id: {result.organization_id}")
 				logger.debug("before creating manager, dict is:")
 				logger.debug(self.connections_for_orgs)
-				self.connections_for_orgs[result.organization_id] = Secrets.create_manager(result.value.get('protocol'), **result.value)
+				self.connections_for_orgs[result.organization_id] = Secrets.create_manager(protocol, **settings)
 				logger.debug("after creating manager, dict is:")
 				logger.debug(self.connections_for_orgs)
 		except Exception as e:
@@ -51,43 +57,55 @@ class SecretsManager():
 	def get_manager(self, organization_id, application_id=None):
 		"""
 		"""
-		if application_id:
-			manager = self.connections_for_orgs_apps.get(organization_id).get(application_id)
-			if not manager:
-				# try a credential store for the whole org
-				logger.warning(f"trying credential store for whole org, as none exists for org_id: {organization_id} application_id: {application_id}")
+		try:
+			if application_id:
+				manager = self.connections_for_orgs_apps.get(organization_id).get(application_id)
+				if not manager:
+					# try a credential store for the whole org
+					logger.warning(f"trying credential store for whole org, as none exists for org_id: {organization_id} application_id: {application_id}")
+					manager = self.connections_for_orgs.get(organization_id)
+			else:
 				manager = self.connections_for_orgs.get(organization_id)
-		else:
-			manager = self.connections_for_orgs.get(organization_id)
-		if not manager:
-			logger.error(f"no secrets manager exists for organization_id:{organization_id} application_id:{application_id}")
-			return None
-		return manager
+			if not manager:
+				logger.error(f"no secrets manager exists for organization_id:{organization_id} application_id:{application_id}")
+				return None
+			return manager
+		except Exception as e:
+			logger.error(e, exc_info=True)
 
 	def change_protocol(self, organization_id, new_protocol, application_id=None, **kwargs):
 		"""
 		"""
-		if application_id:
-			self.connections_for_orgs_apps[organization_id][application_id] = Secrets.create_manager(new_protocol, **kwargs)
-		else:
-			self.connections_for_orgs[organization_id] = Secrets.create_manager(new_protocol, **kwargs)
-		return True
+		try:
+			if application_id:
+				self.connections_for_orgs_apps[organization_id][application_id] = Secrets.create_manager(new_protocol, **kwargs)
+			else:
+				self.connections_for_orgs[organization_id] = Secrets.create_manager(new_protocol, **kwargs)
+			return True
+		except Exception as e:
+			logger.error(e, exc_info=True)
 
 	async def get(self, **kwargs):
 		"""
 		"""
-		if manager := self.get_manager(kwargs.get('organization_id'), kwargs.get('application_id')):
-			logger.debug('got manager in get with kwargs:' + str(kwargs) + ' and manager dir ' + str(dir(manager)))
-			result = await manager.get(kwargs['organization_id'], kwargs['table_name'], kwargs['id'], kwargs['key'])
-			logger.debug('result:' + str(result))
-			return result
+		try:
+			if manager := self.get_manager(kwargs.get('organization_id'), kwargs.get('application_id')):
+				logger.debug('got manager in get with kwargs:' + str(kwargs) + ' and manager dir ' + str(dir(manager)))
+				result = await manager.get(kwargs['organization_id'], kwargs['table_name'], kwargs['id'], kwargs['key'])
+				logger.debug('result:' + str(result))
+				return result
+		except Exception as e:
+			logger.error(e, exc_info=True)
 
 	async def set(self, **kwargs):
 		"""
 		"""
-		if manager := self.get_manager(kwargs.get('organization_id'), kwargs.get('application_id')):
-			await manager.set(kwargs['organization_id'], kwargs['table_name'], kwargs['id'], kwargs['key'], kwargs.get('value'))
-			return True
+		try:
+			if manager := self.get_manager(kwargs.get('organization_id'), kwargs.get('application_id')):
+				await manager.set(kwargs['organization_id'], kwargs['table_name'], kwargs['id'], kwargs['key'], kwargs.get('value'))
+				return True
+		except Exception as e:
+			logger.error(e, exc_info=True)
 
 @dataclass
 class Secrets():
