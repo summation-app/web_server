@@ -37,8 +37,11 @@ class SecretsManager():
 			self.connections_for_orgs_apps[result.organization_id][result.application_id] = Secrets.create_manager(result.value.get('protocol'), **result.value)
 		elif result.organization_id:
 			logger.debug(f"creating secrets connection for org_id: {result.organization_id}")
+			logger.debug("before creating manager, dict is:")
+			logger.debug(self.connections_for_orgs)
 			self.connections_for_orgs[result.organization_id] = Secrets.create_manager(result.value.get('protocol'), **result.value)
-			logger.debug(self.connections_for_orgs[result.organization_id])
+			logger.debug("after creating manager, dict is:")
+			logger.debug(self.connections_for_orgs)
 
 	def get_manager(self, organization_id, application_id=None):
 		"""
