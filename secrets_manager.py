@@ -42,15 +42,9 @@ class SecretsManager():
 			settings = copy.deepcopy(result.value)
 			protocol = settings.pop('protocol')
 			if result.application_id:
-				logger.debug(f"creating secrets connection for org_id: {result.organization_id} application_id: {result.application_id}")
 				self.connections_for_orgs_apps[result.organization_id][result.application_id] = Secrets.create_manager(protocol, **settings)
 			elif result.organization_id:
-				logger.debug(f"creating secrets connection for org_id: {result.organization_id}")
-				logger.debug("before creating manager, dict is:")
-				logger.debug(self.connections_for_orgs)
 				self.connections_for_orgs[result.organization_id] = Secrets.create_manager(protocol, **settings)
-				logger.debug("after creating manager, dict is:")
-				logger.debug(self.connections_for_orgs)
 		except Exception as e:
 			logger.error(e, exc_info=True)
 
