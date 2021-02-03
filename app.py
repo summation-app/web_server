@@ -1668,8 +1668,6 @@ async def analytics(request):
 		logger.error(e, exc_info=True)
 
 @app.route('/ping', methods=['GET'])
-@request_validator_timer
-async def ping(request: Request, organization_id, app_id, token_info):
-	context['duration'] = round(time.perf_counter() - context['start_time'], 3)
+async def ping(request: Request):
 	logger.debug('from ping')
 	return PlainTextResponse("hello")
